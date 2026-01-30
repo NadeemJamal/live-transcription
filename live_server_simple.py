@@ -157,6 +157,10 @@ async def handle_speechmatics(websocket: WebSocket):
                 "max_delay": 2.0,
                 "additional_vocab": MENU_KEYWORDS,
                 "enable_entities": False
+            },
+            "authentication": {
+                "type": "token",
+                "token": api_key
             }
         }
 
