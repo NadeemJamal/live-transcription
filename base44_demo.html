@@ -429,7 +429,7 @@
                 const provider = elements.providerSelect.value;
 
                 transcription = new LiveTranscription({
-                    serverUrl: 'ws://localhost:5005',
+                    serverUrl: 'wss://live-transcription-production.up.railway.app',
                     provider: provider,
 
                     onTranscript: (transcript) => {

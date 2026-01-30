@@ -6,7 +6,7 @@
 
 class LiveTranscription {
     constructor(options = {}) {
-        this.serverUrl = options.serverUrl || 'ws://localhost:5001';
+        this.serverUrl = options.serverUrl || 'wss://live-transcription-production.up.railway.app';
         this.provider = options.provider || 'deepgram-nova2';
         this.onTranscript = options.onTranscript || ((transcript) => console.log(transcript));
         this.onError = options.onError || ((error) => console.error(error));
