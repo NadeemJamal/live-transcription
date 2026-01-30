@@ -68,14 +68,14 @@ except Exception as e:
 CUSTOM_KEYWORDS = []
 
 
-async def handle_deepgram(websocket: WebSocket, interim_results: bool = True, smart_format: bool = True, punctuate: bool = True):
+async def handle_deepgram(websocket: WebSocket, keywords_list: List[str], interim_results: bool = True, smart_format: bool = True, punctuate: bool = True):
     """Handle Deepgram transcription"""
     api_key = os.getenv('DEEPGRAM_API_KEY')
     if not api_key:
         raise Exception("DEEPGRAM_API_KEY not set")
 
     logger.info(f"🔑 Using Deepgram API key: {api_key[:20]}...")
-    logger.info(f"⚙️ Deepgram config - interim: {interim_results}, smart_format: {smart_format}, punctuate: {punctuate}")
+    logger.info(f"⚙️ Deepgram config - keywords: {len(keywords_list)}, interim: {interim_results}, smart_format: {smart_format}, punctuate: {punctuate}")
 
     # Create Deepgram client
     config = DeepgramClientOptions(
@@ -115,9 +115,6 @@ async def handle_deepgram(websocket: WebSocket, interim_results: bool = True, sm
     dg_connection.on(LiveTranscriptionEvents.Open, on_open)
     dg_connection.on(LiveTranscriptionEvents.Close, on_close)
 
-    # Get all keywords (menu + custom)
-    all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
-
     # Configure Deepgram options with keyword boosting
     options = LiveOptions(
         model="nova-2",
@@ -128,7 +125,7 @@ async def handle_deepgram(websocket: WebSocket, interim_results: bool = True, sm
         punctuate=punctuate,
         smart_format=smart_format,
         interim_results=interim_results,
-        keywords=all_keywords,
+        keywords=keywords_list if keywords_list else [],
     )
 
     # Start Deepgram connection
@@ -154,14 +151,14 @@ async def handle_deepgram(websocket: WebSocket, interim_results: bool = True, sm
         logger.info("✅ Deepgram connection closed")
 
 
-async def handle_speechmatics(websocket: WebSocket, max_delay: float = 5.0, interim_results: bool = True):
+async def handle_speechmatics(websocket: WebSocket, keywords_list: List[str], max_delay: float = 5.0, interim_results: bool = True):
     """Handle Speechmatics transcription"""
     api_key = os.getenv('SPEECHMATICS_API_KEY')
     if not api_key:
         raise Exception("SPEECHMATICS_API_KEY not set")
 
     logger.info(f"🔑 Using Speechmatics API key: {api_key[:20]}...")
-    logger.info(f"⚙️ Speechmatics config - max_delay: {max_delay}s, enable_partials: {interim_results}")
+    logger.info(f"⚙️ Speechmatics config - keywords: {len(keywords_list)}, max_delay: {max_delay}s, enable_partials: {interim_results}")
 
     # Speechmatics WebSocket URL
     sm_url = "wss://eu2.rt.speechmatics.com/v2/en"
@@ -176,13 +173,11 @@ async def handle_speechmatics(websocket: WebSocket, max_delay: float = 5.0, inte
     async with websockets.connect(sm_url, extra_headers=headers) as sm_ws:
         logger.info("✅ Connected to Speechmatics")
 
-        # Get all keywords (menu + custom)
-        all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
-
         # Format keywords for Speechmatics (requires objects with "content" field)
-        speechmatics_vocab = [{"content": keyword} for keyword in all_keywords]
+        speechmatics_vocab = [{"content": keyword} for keyword in keywords_list] if keywords_list else []
         logger.info(f"📋 Using {len(speechmatics_vocab)} keywords for Speechmatics")
-        logger.info(f"📋 Sample keywords: {all_keywords[:5]}")
+        if keywords_list:
+            logger.info(f"📋 Sample keywords: {keywords_list[:5]}")
 
         # Start recognition session
         start_recognition = {
@@ -281,6 +276,85 @@ async def get_keywords():
     }
 
 
+@app.get("/api/keywords/menu")
+async def get_menu_keywords():
+    """Get all menu keywords organized by category"""
+    try:
+        from saeed_balti_menu import MENU
+
+        categorized = {}
+        for category, items in MENU.items():
+            if isinstance(items, dict):
+                categorized[category] = list(items.keys())
+
+        return {
+            "success": True,
+            "categories": categorized,
+            "total_items": len(MENU_KEYWORDS)
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to load menu: {str(e)}"}
+        )
+
+
+@app.get("/api/keywords/presets")
+async def get_keyword_presets():
+    """Get predefined keyword presets for different performance needs"""
+
+    # Top priority items (fastest - ~5 second load)
+    top_20 = [
+        "chicken tikka masala", "chicken tikka", "lamb tikka",
+        "butter chicken", "chicken korma", "lamb rogan josh",
+        "garlic naan", "pilau rice", "onion bhaji",
+        "tandoori chicken", "chicken biryani", "lamb biryani",
+        "madras", "vindaloo", "korma", "balti",
+        "poppadoms", "samosa", "naan", "rice"
+    ]
+
+    # Expanded set (moderate - ~10 second load)
+    top_50 = top_20 + [
+        "peshwari naan", "keema naan", "saag aloo", "tarka dhal",
+        "chicken jalfrezi", "lamb bhuna", "prawn", "king prawn",
+        "tikka masala", "rogan josh", "pathia", "dhansak",
+        "dopiaza", "paneer", "saag paneer", "aloo gobi",
+        "bombay aloo", "mushroom rice", "egg fried rice",
+        "special fried rice", "boiled rice", "vegetable rice",
+        "paratha", "chapati", "raita", "chutney",
+        "mango chutney", "chicken tikka biryani", "mixed grill"
+    ]
+
+    # All keywords (slow - ~15 second load)
+    all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
+
+    return {
+        "presets": {
+            "top_20": {
+                "name": "Top 20 (Fast)",
+                "description": "Most common items - fastest loading (~5 seconds)",
+                "keywords": top_20,
+                "count": len(top_20),
+                "load_time": "~5 seconds"
+            },
+            "top_50": {
+                "name": "Top 50 (Balanced)",
+                "description": "Extended coverage - moderate loading (~10 seconds)",
+                "keywords": top_50[:50],  # Ensure exactly 50
+                "count": 50,
+                "load_time": "~10 seconds"
+            },
+            "all": {
+                "name": "All Menu Items (Complete)",
+                "description": "Complete menu coverage - slower loading (~15 seconds)",
+                "keywords": all_keywords,
+                "count": len(all_keywords),
+                "load_time": "~15 seconds"
+            }
+        }
+    }
+
+
 @app.post("/api/keywords/add")
 async def add_keyword(keyword: str = Body(..., embed=True)):
     """Add a custom keyword for boosting"""
@@ -329,26 +403,67 @@ async def transcribe(
     max_delay: float = Query(default=5.0, description="Speechmatics: Max delay in seconds before finalizing (1.0-10.0)"),
     interim_results: bool = Query(default=True, description="Enable interim (partial) results"),
     smart_format: bool = Query(default=True, description="Deepgram: Enable smart formatting"),
-    punctuate: bool = Query(default=True, description="Enable automatic punctuation")
+    punctuate: bool = Query(default=True, description="Enable automatic punctuation"),
+    keywords: str = Query(default="all", description="Keywords preset: 'all', 'top_20', 'top_50', 'none', or comma-separated list")
 ):
     """WebSocket endpoint for live transcription with multi-provider support"""
     await websocket.accept()
-    logger.info(f"🎙️ Client connected - Provider: {provider}, max_delay: {max_delay}s, interim: {interim_results}")
+    logger.info(f"🎙️ Client connected - Provider: {provider}, keywords: {keywords}, max_delay: {max_delay}s, interim: {interim_results}")
 
     try:
+        # Parse keywords parameter
+        selected_keywords = []
+
+        if keywords == "none":
+            selected_keywords = []
+        elif keywords == "top_20":
+            selected_keywords = [
+                "chicken tikka masala", "chicken tikka", "lamb tikka",
+                "butter chicken", "chicken korma", "lamb rogan josh",
+                "garlic naan", "pilau rice", "onion bhaji",
+                "tandoori chicken", "chicken biryani", "lamb biryani",
+                "madras", "vindaloo", "korma", "balti",
+                "poppadoms", "samosa", "naan", "rice"
+            ]
+        elif keywords == "top_50":
+            selected_keywords = [
+                "chicken tikka masala", "chicken tikka", "lamb tikka",
+                "butter chicken", "chicken korma", "lamb rogan josh",
+                "garlic naan", "pilau rice", "onion bhaji",
+                "tandoori chicken", "chicken biryani", "lamb biryani",
+                "madras", "vindaloo", "korma", "balti",
+                "poppadoms", "samosa", "naan", "rice",
+                "peshwari naan", "keema naan", "saag aloo", "tarka dhal",
+                "chicken jalfrezi", "lamb bhuna", "prawn", "king prawn",
+                "tikka masala", "rogan josh", "pathia", "dhansak",
+                "dopiaza", "paneer", "saag paneer", "aloo gobi",
+                "bombay aloo", "mushroom rice", "egg fried rice",
+                "special fried rice", "boiled rice", "vegetable rice",
+                "paratha", "chapati", "raita", "chutney",
+                "mango chutney", "chicken tikka biryani", "mixed grill"
+            ]
+        elif keywords == "all":
+            selected_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
+        else:
+            # Custom comma-separated list
+            selected_keywords = [k.strip().lower() for k in keywords.split(",") if k.strip()]
+
+        logger.info(f"📋 Using {len(selected_keywords)} keywords")
+
         # Send ready signal
         await websocket.send_json({
             'type': 'connected',
             'provider': provider,
-            'status': 'ready'
+            'status': 'ready',
+            'keywords_count': len(selected_keywords)
         })
 
         # Route to appropriate provider
         # Handle provider variants (deepgram-nova2, deepgram-nova3, etc.)
         if provider.startswith("deepgram"):
-            await handle_deepgram(websocket, interim_results, smart_format, punctuate)
+            await handle_deepgram(websocket, selected_keywords, interim_results, smart_format, punctuate)
         elif provider == "speechmatics":
-            await handle_speechmatics(websocket, max_delay, interim_results)
+            await handle_speechmatics(websocket, selected_keywords, max_delay, interim_results)
         else:
             raise Exception(f"Unknown provider: {provider}")
 

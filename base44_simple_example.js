@@ -18,6 +18,7 @@ class LiveTranscription {
         this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
         this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
         this.bufferFlushDelay = options.bufferFlushDelay || 1500;  // Client-side: ms to wait before flushing Speechmatics buffer
+        this.keywords = options.keywords || 'all';  // 'all', 'top_20', 'top_50', 'none', or comma-separated list
 
         this.ws = null;
         this.audioContext = null;
@@ -62,7 +63,8 @@ class LiveTranscription {
                 max_delay: this.maxDelay,
                 interim_results: this.interimResults,
                 smart_format: this.smartFormat,
-                punctuate: this.punctuate
+                punctuate: this.punctuate,
+                keywords: this.keywords
             });
             const url = `${this.serverUrl}/ws/transcribe?${params.toString()}`;
             console.log(`🔗 Connecting to ${url}...`);
