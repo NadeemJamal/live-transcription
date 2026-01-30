@@ -477,6 +477,92 @@ async def transcribe(
             pass
 
 
+@app.get("/test")
+async def test_page():
+    """Test page with no buffering"""
+    from fastapi.responses import HTMLResponse
+
+    html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test - No Buffering</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        #transcripts { margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; min-height: 200px; }
+        .transcript { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #28a745; border-radius: 4px; }
+        .interim { border-left-color: #ffc107; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Test - No Buffering (Raw Output)</h1>
+    <p>Shows EVERY transcript as it arrives, NO buffering.</p>
+    <div>
+        <button id="start">Start (Speechmatics - top_20)</button>
+        <button id="stop">Stop</button>
+    </div>
+    <div id="transcripts"></div>
+    <script>
+        let ws = null, audioContext = null, processor = null, stream = null;
+
+        document.getElementById('start').onclick = async () => {
+            const url = 'wss://live-transcription-production.up.railway.app/ws/transcribe?provider=speechmatics&keywords=top_20&max_delay=5.0';
+            console.log('Connecting:', url);
+            ws = new WebSocket(url);
+
+            ws.onopen = () => console.log('✅ Connected');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+                if (data.type === 'connected') startAudio();
+                if (data.type === 'transcript') {
+                    const div = document.createElement('div');
+                    div.className = data.is_final ? 'transcript' : 'transcript interim';
+                    div.innerHTML = `<strong>${data.is_final ? 'FINAL' : 'INTERIM'}</strong>: ${data.text}<br><small>${new Date().toLocaleTimeString()}</small>`;
+                    document.getElementById('transcripts').insertBefore(div, document.getElementById('transcripts').firstChild);
+                }
+            };
+            ws.onerror = (err) => console.error('❌ Error:', err);
+            ws.onclose = () => console.log('🔌 Disconnected');
+        };
+
+        async function startAudio() {
+            console.log('🎙️ Starting audio...');
+            stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }});
+            audioContext = new AudioContext({ sampleRate: 16000 });
+            const source = audioContext.createMediaStreamSource(stream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (e) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                const audioData = e.inputBuffer.getChannelData(0);
+                const pcm = new Int16Array(audioData.length);
+                for (let i = 0; i < audioData.length; i++) {
+                    const s = Math.max(-1, Math.min(1, audioData[i]));
+                    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                ws.send(pcm.buffer);
+            };
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+            console.log('✅ Recording...');
+        }
+
+        document.getElementById('stop').onclick = () => {
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (ws) ws.close();
+            console.log('⏸️ Stopped');
+        };
+    </script>
+</body>
+</html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
 if __name__ == '__main__':
     import uvicorn
     # Use PORT from environment (Railway) or default to 5005
