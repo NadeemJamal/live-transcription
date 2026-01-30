@@ -1,6 +1,7 @@
 """
 Simple live transcription server using Deepgram SDK directly
 Following Deepgram's official examples
+Deployed on Railway with Deepgram API integration
 """
 import os
 import asyncio
