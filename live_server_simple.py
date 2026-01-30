@@ -179,6 +179,11 @@ async def handle_speechmatics(websocket: WebSocket, max_delay: float = 5.0, inte
         # Get all keywords (menu + custom)
         all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
 
+        # Format keywords for Speechmatics (requires objects with "content" field)
+        speechmatics_vocab = [{"content": keyword} for keyword in all_keywords]
+        logger.info(f"📋 Using {len(speechmatics_vocab)} keywords for Speechmatics")
+        logger.info(f"📋 Sample keywords: {all_keywords[:5]}")
+
         # Start recognition session
         start_recognition = {
             "message": "StartRecognition",
@@ -191,7 +196,7 @@ async def handle_speechmatics(websocket: WebSocket, max_delay: float = 5.0, inte
                 "language": "en",
                 "enable_partials": interim_results,
                 "max_delay": max_delay,
-                "additional_vocab": all_keywords,
+                "additional_vocab": speechmatics_vocab,
                 "enable_entities": False
             }
         }
