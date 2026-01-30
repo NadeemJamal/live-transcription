@@ -644,11 +644,11 @@
                                     clearTimeout(speechmaticsTimeout);
                                 }
 
-                                // Flush after 2.5 seconds of no new words
-                                // (allows for natural pauses between words)
+                                // Flush after 4 seconds of no new words
+                                // (captures complete sentences)
                                 speechmaticsTimeout = setTimeout(() => {
                                     flushSpeechmaticsBuffer();
-                                }, 2500);
+                                }, 4000);
 
                                 // Clear interim
                                 elements.interimTranscript.textContent = '';

@@ -13,17 +13,17 @@ class LiveTranscription {
         this.onStatusChange = options.onStatusChange || ((status) => console.log(status));
 
         // Configurable timing parameters
-        this.maxDelay = options.maxDelay || 5.0;  // Speechmatics: seconds before finalizing
+        this.maxDelay = options.maxDelay || 8.0;  // Speechmatics: seconds before finalizing (default 8s for complete sentences)
         this.interimResults = options.interimResults !== undefined ? options.interimResults : true;
         this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
         this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
         this.keywords = options.keywords || 'all';  // 'all', 'top_20', 'top_50', 'none', or comma-separated list
 
-        // Speechmatics buffering control
-        this.enableBuffering = options.enableBuffering !== undefined ? options.enableBuffering : false;  // Default: OFF (no buffering)
+        // Speechmatics buffering control - DEFAULT ON for sentence-level display
+        this.enableBuffering = options.enableBuffering !== undefined ? options.enableBuffering : true;  // Default: ON (buffer into sentences)
         // Client-side buffer delay: wait this long after last word before flushing
-        // Default: half of max_delay (in milliseconds) to allow for natural speech pauses
-        this.bufferFlushDelay = options.bufferFlushDelay || (this.maxDelay * 1000 * 0.5);  // 50% of max_delay
+        // Default: 4 seconds to capture complete sentences
+        this.bufferFlushDelay = options.bufferFlushDelay || 4000;  // 4 seconds
 
         this.ws = null;
         this.audioContext = null;
@@ -93,33 +93,28 @@ class LiveTranscription {
                 if (data.type === 'transcript') {
                     // Check if buffering is enabled AND this is Speechmatics final
                     if (this.enableBuffering && data.is_final && data.provider === 'speechmatics') {
-                        console.log(`[SM Buffer] Received word: "${data.text}"`);
-
                         // Buffer Speechmatics finals and flush after pause
                         if (this.speechmaticsBuffer.length === 0) {
                             this.speechmaticsTimestamp = new Date();
                         }
 
                         this.speechmaticsBuffer += (this.speechmaticsBuffer ? ' ' : '') + data.text;
-                        console.log(`[SM Buffer] Current buffer: "${this.speechmaticsBuffer}"`);
 
                         // Clear existing timeout and set new one
                         if (this.speechmaticsTimeout) {
                             clearTimeout(this.speechmaticsTimeout);
                         }
 
-                        // Flush after configured delay with no new words
+                        // Flush after configured delay with no new words (user paused)
                         this.speechmaticsTimeout = setTimeout(() => {
-                            console.log(`[SM Buffer] Flushing after ${this.bufferFlushDelay}ms delay`);
                             this.flushSpeechmaticsBuffer();
                         }, this.bufferFlushDelay);
 
                     } else {
-                        // Pass through immediately (default behavior)
+                        // Pass through immediately
                         // - All Deepgram transcripts
                         // - All interim results
                         // - Speechmatics finals when buffering is disabled
-                        console.log(`[Pass Through] ${data.is_final ? 'FINAL' : 'INTERIM'} from ${data.provider}: "${data.text}"`);
                         this.onTranscript({
                             text: data.text,
                             isFinal: data.is_final,

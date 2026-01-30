@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voice Ordering with Smart Parser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            margin: 10px 5px;
+            cursor: pointer;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .status.listening {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+        .status.stopped {
+            background: #f8f9fa;
+            border: 2px solid #6c757d;
+        }
+        .sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .section {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            min-height: 200px;
+        }
+        .section h3 {
+            margin-top: 0;
+        }
+        .word {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 5px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .word.filler {
+            opacity: 0.3;
+            text-decoration: line-through;
+        }
+        .cart-item {
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            border-left: 4px solid #28a745;
+            border-radius: 4px;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .quantity {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .clear-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Voice Ordering with Smart Parser</h1>
+    <p>Say: <strong>"Can you give me two plates of chicken tikka masala and garlic naan"</strong></p>
+
+    <div class="controls">
+        <button id="start-btn">🎤 Start Voice Order</button>
+        <button id="stop-btn" disabled>⏹️ Stop</button>
+        <button id="clear-btn" class="clear-btn">Clear Cart</button>
+    </div>
+
+    <div id="status" class="status stopped">
+        ⚪ Not listening
+    </div>
+
+    <div class="sections">
+        <div class="section">
+            <h3>Words Heard (Raw)</h3>
+            <div id="raw-words"></div>
+        </div>
+
+        <div class="section">
+            <h3>🛒 Cart (Parsed)</h3>
+            <div id="cart"></div>
+        </div>
+    </div>
+
+    <script src="https://nadeemjamal.github.io/live-transcription/base44_simple_example.js"></script>
+    <script src="order_parser.js"></script>
+    <script>
+        let transcription = null;
+        const parser = new OrderParser();
+        const fillerWords = new Set(['can', 'you', 'please', 'give', 'me', 'get', 'have', 'want', 'like', 'order', 'and', 'with', 'of', 'the', 'a', 'an', 'some', 'would', 'could', 'may', 'i', 'id', 'to', 'for', 'also', 'plus', 'um', 'uh', 'er']);
+
+        const elements = {
+            startBtn: document.getElementById('start-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            status: document.getElementById('status'),
+            rawWords: document.getElementById('raw-words'),
+            cart: document.getElementById('cart')
+        };
+
+        elements.startBtn.onclick = async () => {
+            elements.startBtn.disabled = true;
+            elements.stopBtn.disabled = false;
+            elements.status.className = 'status listening';
+            elements.status.innerHTML = '🔴 Listening... (loading keywords ~5 seconds)';
+
+            transcription = await startTranscription({
+                serverUrl: 'wss://live-transcription-production.up.railway.app',
+                provider: 'speechmatics',
+                keywords: 'top_20',
+                maxDelay: 3.0,
+                enableBuffering: false,
+
+                onTranscript: (t) => {
+                    if (t.isFinal) {
+                        handleWord(t.text);
+                    }
+                },
+
+                onStatusChange: (status) => {
+                    if (status.recording) {
+                        elements.status.innerHTML = '🔴 Listening... Speak now!';
+                    }
+                },
+
+                onError: (error) => {
+                    alert('Error: ' + error);
+                }
+            });
+        };
+
+        elements.stopBtn.onclick = () => {
+            if (transcription) {
+                transcription.stopRecording();
+                transcription.disconnect();
+                transcription = null;
+            }
+
+            elements.startBtn.disabled = false;
+            elements.stopBtn.disabled = true;
+            elements.status.className = 'status stopped';
+            elements.status.innerHTML = '⚪ Not listening';
+        };
+
+        elements.clearBtn.onclick = () => {
+            elements.rawWords.innerHTML = '';
+            elements.cart.innerHTML = '';
+            parser.clear();
+        };
+
+        function handleWord(word) {
+            // Show raw word
+            const isFiller = fillerWords.has(word.toLowerCase());
+            const wordSpan = document.createElement('span');
+            wordSpan.className = isFiller ? 'word filler' : 'word';
+            wordSpan.textContent = word;
+            elements.rawWords.appendChild(wordSpan);
+
+            // Add to parser
+            parser.addWord(word);
+
+            // Check for matches
+            const matches = parser.getMatches();
+            matches.forEach(match => {
+                addToCart(match.name, match.quantity);
+            });
+        }
+
+        function addToCart(itemName, quantity) {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'cart-item';
+            itemDiv.innerHTML = `
+                <span class="quantity">${quantity}x</span> ${itemName}
+                <br><small>${new Date().toLocaleTimeString()}</small>
+            `;
+            elements.cart.insertBefore(itemDiv, elements.cart.firstChild);
+        }
+    </script>
+</body>
+</html>
