@@ -140,7 +140,12 @@ async def handle_speechmatics(websocket: WebSocket):
 
     logger.info("🔗 Connecting to Speechmatics...")
 
-    async with websockets.connect(sm_url) as sm_ws:
+    # Add Authorization header with API key
+    headers = {
+        "Authorization": f"Bearer {api_key}"
+    }
+
+    async with websockets.connect(sm_url, extra_headers=headers) as sm_ws:
         logger.info("✅ Connected to Speechmatics")
 
         # Start recognition session
@@ -157,10 +162,6 @@ async def handle_speechmatics(websocket: WebSocket):
                 "max_delay": 2.0,
                 "additional_vocab": MENU_KEYWORDS,
                 "enable_entities": False
-            },
-            "authentication": {
-                "type": "token",
-                "token": api_key
             }
         }
 
