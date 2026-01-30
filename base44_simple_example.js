@@ -90,12 +90,15 @@ class LiveTranscription {
                 if (data.type === 'transcript') {
                     // Check if this is Speechmatics final (which sends word-by-word)
                     if (data.is_final && data.provider === 'speechmatics') {
+                        console.log(`[SM Buffer] Received word: "${data.text}"`);
+
                         // Buffer Speechmatics finals and flush after pause
                         if (this.speechmaticsBuffer.length === 0) {
                             this.speechmaticsTimestamp = new Date();
                         }
 
                         this.speechmaticsBuffer += (this.speechmaticsBuffer ? ' ' : '') + data.text;
+                        console.log(`[SM Buffer] Current buffer: "${this.speechmaticsBuffer}"`);
 
                         // Clear existing timeout and set new one
                         if (this.speechmaticsTimeout) {
@@ -104,11 +107,13 @@ class LiveTranscription {
 
                         // Flush after configured delay with no new words
                         this.speechmaticsTimeout = setTimeout(() => {
+                            console.log(`[SM Buffer] Flushing after ${this.bufferFlushDelay}ms delay`);
                             this.flushSpeechmaticsBuffer();
                         }, this.bufferFlushDelay);
 
                     } else {
                         // Deepgram finals or any interim results - pass through immediately
+                        console.log(`[Pass Through] ${data.is_final ? 'FINAL' : 'INTERIM'} from ${data.provider}: "${data.text}"`);
                         this.onTranscript({
                             text: data.text,
                             isFinal: data.is_final,
