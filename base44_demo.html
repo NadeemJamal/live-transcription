@@ -584,7 +584,7 @@
                 const provider = elements.providerSelect.value;
 
                 transcription = new LiveTranscription({
-                    serverUrl: 'wss://live-transcription-production.up.railway.app',
+                    serverUrl: SERVER_URL.replace('https://', 'wss://'),
                     provider: provider,
 
                     onTranscript: (transcript) => {
@@ -699,6 +699,9 @@
             }
         };
 
+        // Server URL
+        const SERVER_URL = 'https://live-transcription-production.up.railway.app';
+
         // Keywords management
         const keywordsElements = {
             toggleBtn: document.getElementById('toggle-keywords'),
@@ -715,7 +718,7 @@
 
         async function loadKeywords() {
             try {
-                const response = await fetch(`${transcription.serverUrl}/api/keywords`);
+                const response = await fetch(`${SERVER_URL}/api/keywords`);
                 const data = await response.json();
 
                 const allKeywords = data.keywords;
@@ -755,7 +758,7 @@
             if (!keyword) return;
 
             try {
-                const response = await fetch(`${transcription.serverUrl}/api/keywords/add`, {
+                const response = await fetch(`${SERVER_URL}/api/keywords/add`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ keyword })
@@ -778,7 +781,7 @@
             if (!confirm(`Delete keyword "${keyword}"?`)) return;
 
             try {
-                const response = await fetch(`${transcription.serverUrl}/api/keywords/${encodeURIComponent(keyword)}`, {
+                const response = await fetch(`${SERVER_URL}/api/keywords/${encodeURIComponent(keyword)}`, {
                     method: 'DELETE'
                 });
 
@@ -802,16 +805,14 @@
             keywordsElements.content.style.display = isHidden ? 'block' : 'none';
             keywordsElements.toggleBtn.textContent = isHidden ? 'Hide Keywords' : 'Show Keywords';
 
-            if (isHidden && transcription) {
+            if (isHidden) {
                 loadKeywords();
             }
         };
 
         // Refresh keywords
         keywordsElements.refreshBtn.onclick = () => {
-            if (transcription) {
-                loadKeywords();
-            }
+            loadKeywords();
         };
 
         // Add keyword
