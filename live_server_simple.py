@@ -188,7 +188,7 @@ async def handle_speechmatics(websocket: WebSocket):
             "transcription_config": {
                 "language": "en",
                 "enable_partials": True,
-                "max_delay": 2.0,
+                "max_delay": 5.0,
                 "additional_vocab": all_keywords,
                 "enable_entities": False
             }
