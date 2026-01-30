@@ -289,6 +289,130 @@
             font-size: 0.9em;
             color: #6c757d;
         }
+
+        .keywords-section {
+            padding: 30px;
+            background: #fff;
+        }
+
+        .keywords-section h2 {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .small-btn {
+            font-size: 0.8em;
+            padding: 5px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .small-btn:hover {
+            background: #5568d3;
+        }
+
+        .keyword-input {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .keyword-input input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #dee2e6;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .keyword-input button {
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .keyword-input button:hover {
+            background: #218838;
+        }
+
+        .keywords-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+
+        .keywords-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .keywords-table thead {
+            background: #f8f9fa;
+            position: sticky;
+            top: 0;
+        }
+
+        .keywords-table th,
+        .keywords-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .keywords-table th {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .keywords-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .keyword-source {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .keyword-source.menu {
+            background: #e7f3ff;
+            color: #0066cc;
+        }
+
+        .keyword-source.custom {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .delete-keyword-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+
+        .delete-keyword-btn:hover {
+            background: #c82333;
+        }
+
+        .delete-keyword-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -353,6 +477,37 @@
             <div class="stat-card">
                 <div class="stat-value" id="word-count">0</div>
                 <div class="stat-label">Total Words</div>
+            </div>
+        </div>
+
+        <div class="keywords-section">
+            <h2>
+                Menu Keywords (<span id="keyword-count">0</span>)
+                <button id="toggle-keywords" class="small-btn">Show Keywords</button>
+                <button id="refresh-keywords" class="small-btn">Refresh</button>
+            </h2>
+
+            <div id="keywords-content" style="display: none;">
+                <div class="keyword-input">
+                    <input type="text" id="new-keyword" placeholder="Add custom keyword (e.g., burger, pizza)" />
+                    <button id="add-keyword-btn">Add Keyword</button>
+                </div>
+
+                <div class="keywords-table-container">
+                    <table class="keywords-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Keyword</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keywords-table-body">
+                            <!-- Keywords will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -541,6 +696,129 @@
                 } catch (error) {
                     showError(`Failed to change provider: ${error.message}`);
                 }
+            }
+        };
+
+        // Keywords management
+        const keywordsElements = {
+            toggleBtn: document.getElementById('toggle-keywords'),
+            refreshBtn: document.getElementById('refresh-keywords'),
+            content: document.getElementById('keywords-content'),
+            count: document.getElementById('keyword-count'),
+            tableBody: document.getElementById('keywords-table-body'),
+            newKeyword: document.getElementById('new-keyword'),
+            addBtn: document.getElementById('add-keyword-btn')
+        };
+
+        let menuKeywords = [];
+        let customKeywords = [];
+
+        async function loadKeywords() {
+            try {
+                const response = await fetch(`${transcription.serverUrl}/api/keywords`);
+                const data = await response.json();
+
+                const allKeywords = data.keywords;
+                keywordsElements.count.textContent = allKeywords.length;
+
+                // Render table
+                keywordsElements.tableBody.innerHTML = allKeywords.map((keyword, index) => {
+                    const isCustom = !menuKeywords.includes(keyword);
+                    return `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${keyword}</td>
+                            <td>
+                                <span class="keyword-source ${isCustom ? 'custom' : 'menu'}">
+                                    ${isCustom ? 'Custom' : 'Menu'}
+                                </span>
+                            </td>
+                            <td>
+                                ${isCustom ?
+                                    `<button class="delete-keyword-btn" onclick="deleteKeyword('${keyword}')">Delete</button>` :
+                                    `<button class="delete-keyword-btn" disabled>Menu Item</button>`
+                                }
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Track menu keywords for next render
+                menuKeywords = allKeywords.filter((_, i) => i < data.menu_keywords);
+            } catch (error) {
+                showError(`Failed to load keywords: ${error.message}`);
+            }
+        }
+
+        async function addKeyword() {
+            const keyword = keywordsElements.newKeyword.value.trim();
+            if (!keyword) return;
+
+            try {
+                const response = await fetch(`${transcription.serverUrl}/api/keywords/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ keyword })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to add keyword');
+                }
+
+                keywordsElements.newKeyword.value = '';
+                await loadKeywords();
+                showError(`✅ Added keyword: ${keyword}`);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function deleteKeyword(keyword) {
+            if (!confirm(`Delete keyword "${keyword}"?`)) return;
+
+            try {
+                const response = await fetch(`${transcription.serverUrl}/api/keywords/${encodeURIComponent(keyword)}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to delete keyword');
+                }
+
+                await loadKeywords();
+                showError(`✅ Deleted keyword: ${keyword}`);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // Make deleteKeyword global for onclick handler
+        window.deleteKeyword = deleteKeyword;
+
+        // Toggle keywords visibility
+        keywordsElements.toggleBtn.onclick = () => {
+            const isHidden = keywordsElements.content.style.display === 'none';
+            keywordsElements.content.style.display = isHidden ? 'block' : 'none';
+            keywordsElements.toggleBtn.textContent = isHidden ? 'Hide Keywords' : 'Show Keywords';
+
+            if (isHidden && transcription) {
+                loadKeywords();
+            }
+        };
+
+        // Refresh keywords
+        keywordsElements.refreshBtn.onclick = () => {
+            if (transcription) {
+                loadKeywords();
+            }
+        };
+
+        // Add keyword
+        keywordsElements.addBtn.onclick = addKeyword;
+        keywordsElements.newKeyword.onkeypress = (e) => {
+            if (e.key === 'Enter') {
+                addKeyword();
             }
         };
 

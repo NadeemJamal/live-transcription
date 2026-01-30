@@ -6,8 +6,10 @@ import os
 import asyncio
 import json
 import base64
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from typing import List
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from loguru import logger
 from dotenv import load_dotenv
 import websockets
@@ -32,17 +34,28 @@ app.add_middleware(
 )
 
 
-# Menu keywords for boosting
-MENU_KEYWORDS = [
-    "chicken tikka", "chicken tikka masala", "tikka masala", "jalfrezi",
-    "korma", "rogan josh", "vindaloo", "madras", "biryani", "tandoori",
-    "naan", "samosa", "bhaji", "onion bhaji", "poppadom", "chutney",
-    "raita", "lassi", "mango", "lamb", "paneer", "saag", "balti",
-    "pathia", "dhansak", "dopiaza", "pasanda", "keema", "chicken",
-    "lamb rogan josh", "chicken korma", "lamb korma", "chicken madras",
-    "lamb vindaloo", "chicken jalfrezi", "lamb bhuna", "prawn",
-    "king prawn", "garlic naan", "peshwari naan", "pilau rice"
-]
+# Try to load menu keywords from Saeed Balti menu, fallback to default list
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from saeed_balti.bot.saeed_balti_menu import get_top_priority_keyterms
+    MENU_KEYWORDS = [kw.lower() for kw in get_top_priority_keyterms(limit=100)]
+    logger.info(f"✅ Loaded {len(MENU_KEYWORDS)} keywords from Saeed Balti menu")
+except Exception as e:
+    logger.warning(f"⚠️ Could not load Saeed Balti menu, using default keywords: {e}")
+    MENU_KEYWORDS = [
+        "chicken tikka", "chicken tikka masala", "tikka masala", "jalfrezi",
+        "korma", "rogan josh", "vindaloo", "madras", "biryani", "tandoori",
+        "naan", "samosa", "bhaji", "onion bhaji", "poppadom", "chutney",
+        "raita", "lassi", "mango", "lamb", "paneer", "saag", "balti",
+        "pathia", "dhansak", "dopiaza", "pasanda", "keema", "chicken",
+        "lamb rogan josh", "chicken korma", "lamb korma", "chicken madras",
+        "lamb vindaloo", "chicken jalfrezi", "lamb bhuna", "prawn",
+        "king prawn", "garlic naan", "peshwari naan", "pilau rice"
+    ]
+
+# Store custom keywords added by users
+CUSTOM_KEYWORDS = []
 
 
 async def handle_deepgram(websocket: WebSocket):
@@ -91,6 +104,9 @@ async def handle_deepgram(websocket: WebSocket):
     dg_connection.on(LiveTranscriptionEvents.Open, on_open)
     dg_connection.on(LiveTranscriptionEvents.Close, on_close)
 
+    # Get all keywords (menu + custom)
+    all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
+
     # Configure Deepgram options with keyword boosting
     options = LiveOptions(
         model="nova-2",
@@ -101,7 +117,7 @@ async def handle_deepgram(websocket: WebSocket):
         punctuate=True,
         smart_format=True,
         interim_results=True,
-        keywords=MENU_KEYWORDS,
+        keywords=all_keywords,
     )
 
     # Start Deepgram connection
@@ -148,6 +164,9 @@ async def handle_speechmatics(websocket: WebSocket):
     async with websockets.connect(sm_url, extra_headers=headers) as sm_ws:
         logger.info("✅ Connected to Speechmatics")
 
+        # Get all keywords (menu + custom)
+        all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
+
         # Start recognition session
         start_recognition = {
             "message": "StartRecognition",
@@ -160,7 +179,7 @@ async def handle_speechmatics(websocket: WebSocket):
                 "language": "en",
                 "enable_partials": True,
                 "max_delay": 2.0,
-                "additional_vocab": MENU_KEYWORDS,
+                "additional_vocab": all_keywords,
                 "enable_entities": False
             }
         }
@@ -229,6 +248,60 @@ async def handle_speechmatics(websocket: WebSocket):
         await asyncio.gather(
             forward_audio(),
             forward_transcripts()
+        )
+
+
+@app.get("/api/keywords")
+async def get_keywords():
+    """Get all active keywords (menu + custom)"""
+    all_keywords = list(set(MENU_KEYWORDS + CUSTOM_KEYWORDS))
+    all_keywords.sort()
+    return {
+        "keywords": all_keywords,
+        "menu_keywords": len(MENU_KEYWORDS),
+        "custom_keywords": len(CUSTOM_KEYWORDS),
+        "total": len(all_keywords)
+    }
+
+
+@app.post("/api/keywords/add")
+async def add_keyword(keyword: str = Body(..., embed=True)):
+    """Add a custom keyword for boosting"""
+    keyword_lower = keyword.lower().strip()
+    if not keyword_lower:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Keyword cannot be empty"}
+        )
+
+    if keyword_lower in CUSTOM_KEYWORDS:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Keyword already exists"}
+        )
+
+    CUSTOM_KEYWORDS.append(keyword_lower)
+    logger.info(f"➕ Added custom keyword: {keyword_lower}")
+
+    return {
+        "success": True,
+        "keyword": keyword_lower,
+        "total_keywords": len(MENU_KEYWORDS) + len(CUSTOM_KEYWORDS)
+    }
+
+
+@app.delete("/api/keywords/{keyword}")
+async def delete_keyword(keyword: str):
+    """Delete a custom keyword"""
+    keyword_lower = keyword.lower().strip()
+    if keyword_lower in CUSTOM_KEYWORDS:
+        CUSTOM_KEYWORDS.remove(keyword_lower)
+        logger.info(f"➖ Removed custom keyword: {keyword_lower}")
+        return {"success": True, "keyword": keyword_lower}
+    else:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Keyword not found in custom keywords"}
         )
 
 
