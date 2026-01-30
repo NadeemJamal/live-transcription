@@ -433,6 +433,18 @@
             </div>
 
             <div class="control-group">
+                <label for="buffer-delay">Sentence Buffer Delay: <span id="buffer-delay-value">3.0</span> seconds</label>
+                <input type="range" id="buffer-delay" min="1" max="10" step="0.5" value="3" style="width: 100%; max-width: 300px;">
+                <small style="color: #6c757d;">Wait time after last word before finalizing sentence</small>
+            </div>
+
+            <div class="control-group">
+                <label for="max-delay">Max Delay (Server): <span id="max-delay-value">10.0</span> seconds</label>
+                <input type="range" id="max-delay" min="3" max="15" step="1" value="10" style="width: 100%; max-width: 300px;">
+                <small style="color: #6c757d;">Server-side delay before finalizing each word</small>
+            </div>
+
+            <div class="control-group">
                 <button id="connect-btn" class="primary">Connect</button>
                 <button id="disconnect-btn" class="danger" disabled>Disconnect</button>
                 <button id="start-btn" class="success" disabled>Start Recording</button>
@@ -520,14 +532,13 @@
         let totalCorrections = 0;
         let totalWords = 0;
 
-        // Speechmatics buffering (accumulate word-by-word finals into phrases)
-        let speechmaticsBuffer = '';
-        let speechmaticsTimeout = null;
-        let speechmaticsTimestamp = null;
-
         // Elements
         const elements = {
             providerSelect: document.getElementById('provider-select'),
+            bufferDelay: document.getElementById('buffer-delay'),
+            bufferDelayValue: document.getElementById('buffer-delay-value'),
+            maxDelay: document.getElementById('max-delay'),
+            maxDelayValue: document.getElementById('max-delay-value'),
             connectBtn: document.getElementById('connect-btn'),
             disconnectBtn: document.getElementById('disconnect-btn'),
             startBtn: document.getElementById('start-btn'),
@@ -544,6 +555,15 @@
             totalCount: document.getElementById('total-count'),
             correctionCount: document.getElementById('correction-count'),
             wordCount: document.getElementById('word-count')
+        };
+
+        // Update delay displays when sliders change
+        elements.bufferDelay.oninput = (e) => {
+            elements.bufferDelayValue.textContent = parseFloat(e.target.value).toFixed(1);
+        };
+
+        elements.maxDelay.oninput = (e) => {
+            elements.maxDelayValue.textContent = parseFloat(e.target.value).toFixed(1);
         };
 
         // Update UI state
@@ -576,42 +596,6 @@
             }, 5000);
         }
 
-        // Flush Speechmatics buffer to display
-        function flushSpeechmaticsBuffer() {
-            if (speechmaticsBuffer.trim().length === 0) return;
-
-            const div = document.createElement('div');
-            div.className = 'transcript-item';
-
-            const time = document.createElement('div');
-            time.className = 'transcript-time';
-            time.textContent = (speechmaticsTimestamp || new Date()).toLocaleTimeString();
-
-            const text = document.createElement('div');
-            text.className = 'transcript-text';
-            text.textContent = speechmaticsBuffer.trim();
-
-            // Add provider badge
-            const providerBadge = document.createElement('span');
-            providerBadge.className = 'transcript-provider';
-            providerBadge.textContent = 'speechmatics';
-            text.appendChild(providerBadge);
-
-            div.appendChild(time);
-            div.appendChild(text);
-
-            elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
-
-            // Update stats
-            totalTranscripts++;
-            totalWords += speechmaticsBuffer.trim().split(' ').length;
-            updateStats();
-
-            // Clear buffer
-            speechmaticsBuffer = '';
-            speechmaticsTimestamp = null;
-        }
-
         // Update stats
         function updateStats() {
             elements.totalCount.textContent = totalTranscripts;
@@ -623,77 +607,58 @@
         elements.connectBtn.onclick = async () => {
             try {
                 const provider = elements.providerSelect.value;
+                const bufferDelay = parseFloat(elements.bufferDelay.value) * 1000; // Convert to ms
+                const maxDelay = parseFloat(elements.maxDelay.value);
 
                 transcription = new LiveTranscription({
                     serverUrl: SERVER_URL.replace('https://', 'wss://'),
                     provider: provider,
+                    maxDelay: maxDelay,
+                    bufferFlushDelay: bufferDelay,
+                    enableBuffering: true,
+                    keywords: 'all',
 
                     onTranscript: (transcript) => {
                         if (transcript.isFinal) {
-                            // Check if this is Speechmatics (which sends word-by-word finals)
-                            if (transcript.provider === 'speechmatics') {
-                                // Buffer Speechmatics finals and flush after pause
-                                if (speechmaticsBuffer.length === 0) {
-                                    speechmaticsTimestamp = transcript.timestamp;
-                                }
+                            // Library handles buffering - just display final transcripts
+                            const div = document.createElement('div');
+                            div.className = 'transcript-item';
 
-                                speechmaticsBuffer += (speechmaticsBuffer ? ' ' : '') + transcript.text;
+                            const time = document.createElement('div');
+                            time.className = 'transcript-time';
+                            time.textContent = transcript.timestamp.toLocaleTimeString();
 
-                                // Clear existing timeout and set new one
-                                if (speechmaticsTimeout) {
-                                    clearTimeout(speechmaticsTimeout);
-                                }
+                            const text = document.createElement('div');
+                            text.className = 'transcript-text';
+                            text.textContent = transcript.text;
 
-                                // Flush after 3 seconds of no new words
-                                // (captures complete sentences with natural pauses)
-                                speechmaticsTimeout = setTimeout(() => {
-                                    flushSpeechmaticsBuffer();
-                                }, 3000);
+                            // Add provider badge
+                            const providerBadge = document.createElement('span');
+                            providerBadge.className = 'transcript-provider';
+                            providerBadge.textContent = transcript.provider;
+                            text.appendChild(providerBadge);
 
-                                // Clear interim
-                                elements.interimTranscript.textContent = '';
-
-                            } else {
-                                // Deepgram - display immediately (already sends complete phrases)
-                                const div = document.createElement('div');
-                                div.className = 'transcript-item';
-
-                                const time = document.createElement('div');
-                                time.className = 'transcript-time';
-                                time.textContent = transcript.timestamp.toLocaleTimeString();
-
-                                const text = document.createElement('div');
-                                text.className = 'transcript-text';
-                                text.textContent = transcript.text;
-
-                                // Add provider badge
-                                const providerBadge = document.createElement('span');
-                                providerBadge.className = 'transcript-provider';
-                                providerBadge.textContent = transcript.provider;
-                                text.appendChild(providerBadge);
-
-                                // Add correction if exists
-                                if (transcript.original) {
-                                    const correction = document.createElement('span');
-                                    correction.className = 'transcript-correction';
-                                    correction.textContent = `corrected from: "${transcript.original}"`;
-                                    text.appendChild(correction);
-                                    totalCorrections++;
-                                }
-
-                                div.appendChild(time);
-                                div.appendChild(text);
-
-                                elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
-
-                                // Update stats
-                                totalTranscripts++;
-                                totalWords += transcript.text.split(' ').length;
-                                updateStats();
-
-                                // Clear interim
-                                elements.interimTranscript.textContent = '';
+                            // Add correction if exists
+                            if (transcript.original) {
+                                const correction = document.createElement('span');
+                                correction.className = 'transcript-correction';
+                                correction.textContent = `corrected from: "${transcript.original}"`;
+                                text.appendChild(correction);
+                                totalCorrections++;
                             }
+
+                            div.appendChild(time);
+                            div.appendChild(text);
+
+                            elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
+
+                            // Update stats
+                            totalTranscripts++;
+                            totalWords += transcript.text.split(' ').length;
+                            updateStats();
+
+                            // Clear interim
+                            elements.interimTranscript.textContent = '';
                         } else {
                             // Interim transcript
                             elements.interimTranscript.textContent = transcript.text;
@@ -719,12 +684,6 @@
 
         // Disconnect
         elements.disconnectBtn.onclick = () => {
-            // Flush any buffered Speechmatics transcripts
-            if (speechmaticsTimeout) {
-                clearTimeout(speechmaticsTimeout);
-            }
-            flushSpeechmaticsBuffer();
-
             if (transcription) {
                 transcription.disconnect();
                 transcription = null;
@@ -744,12 +703,6 @@
 
         // Stop recording
         elements.stopBtn.onclick = () => {
-            // Flush any buffered Speechmatics transcripts
-            if (speechmaticsTimeout) {
-                clearTimeout(speechmaticsTimeout);
-            }
-            flushSpeechmaticsBuffer();
-
             if (transcription) {
                 transcription.stopRecording();
             }
@@ -757,13 +710,6 @@
 
         // Clear transcripts
         elements.clearBtn.onclick = () => {
-            // Clear Speechmatics buffer
-            if (speechmaticsTimeout) {
-                clearTimeout(speechmaticsTimeout);
-            }
-            speechmaticsBuffer = '';
-            speechmaticsTimestamp = null;
-
             elements.finalTranscripts.innerHTML = '';
             elements.interimTranscript.textContent = '';
             totalTranscripts = 0;
