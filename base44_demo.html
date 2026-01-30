@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base44 Live Transcription Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .controls {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+
+        select, button {
+            font-size: 16px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: 2px solid #dee2e6;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        select {
+            width: 100%;
+            max-width: 300px;
+        }
+
+        button {
+            font-weight: 600;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        button.primary {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        button.primary:hover {
+            background: #5568d3;
+        }
+
+        button.success {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        button.success:hover {
+            background: #218838;
+        }
+
+        button.danger {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+
+        button.danger:hover {
+            background: #c82333;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: white;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+        }
+
+        .status-dot.disconnected {
+            background: #6c757d;
+        }
+
+        .status-dot.recording {
+            background: #dc3545;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .transcripts {
+            padding: 30px;
+            min-height: 400px;
+        }
+
+        .transcripts h2 {
+            margin-bottom: 20px;
+            color: #495057;
+        }
+
+        .interim-transcript {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            min-height: 50px;
+            font-style: italic;
+            color: #856404;
+        }
+
+        .interim-transcript:empty:before {
+            content: "Interim transcripts will appear here...";
+            opacity: 0.5;
+        }
+
+        .final-transcripts {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .transcript-item {
+            background: white;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 0 8px 8px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .transcript-time {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .transcript-text {
+            font-size: 16px;
+            color: #212529;
+            line-height: 1.5;
+        }
+
+        .transcript-correction {
+            display: inline-block;
+            background: #fff3cd;
+            color: #856404;
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+        }
+
+        .transcript-provider {
+            display: inline-block;
+            background: #e7f3ff;
+            color: #004085;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+
+        .error-display {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 30px;
+            display: none;
+        }
+
+        .error-display.show {
+            display: block;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Live Transcription</h1>
+            <p>Real-time speech-to-text with Deepgram & Speechmatics</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="provider-select">STT Provider:</label>
+                <select id="provider-select">
+                    <option value="deepgram-nova2">Deepgram Nova-2 (with menu boosting)</option>
+                    <option value="deepgram-nova3">Deepgram Nova-3 (with menu boosting)</option>
+                    <option value="speechmatics">Speechmatics</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <button id="connect-btn" class="primary">Connect</button>
+                <button id="disconnect-btn" class="danger" disabled>Disconnect</button>
+                <button id="start-btn" class="success" disabled>Start Recording</button>
+                <button id="stop-btn" class="danger" disabled>Stop Recording</button>
+                <button id="clear-btn">Clear Transcripts</button>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot disconnected" id="connection-dot"></span>
+                <span id="connection-status">Disconnected</span>
+            </div>
+            <div class="status-item">
+                <span class="status-dot disconnected" id="recording-dot"></span>
+                <span id="recording-status">Not Recording</span>
+            </div>
+            <div class="status-item">
+                <span id="provider-display">-</span>
+            </div>
+        </div>
+
+        <div class="error-display" id="error-display"></div>
+
+        <div class="transcripts">
+            <h2>Interim Transcript</h2>
+            <div class="interim-transcript" id="interim-transcript"></div>
+
+            <h2>Final Transcripts</h2>
+            <div class="final-transcripts" id="final-transcripts"></div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="total-count">0</div>
+                <div class="stat-label">Total Transcripts</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="correction-count">0</div>
+                <div class="stat-label">Corrections Applied</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="word-count">0</div>
+                <div class="stat-label">Total Words</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="base44_simple_example.js"></script>
+    <script>
+        // State
+        let transcription = null;
+        let totalTranscripts = 0;
+        let totalCorrections = 0;
+        let totalWords = 0;
+
+        // Elements
+        const elements = {
+            providerSelect: document.getElementById('provider-select'),
+            connectBtn: document.getElementById('connect-btn'),
+            disconnectBtn: document.getElementById('disconnect-btn'),
+            startBtn: document.getElementById('start-btn'),
+            stopBtn: document.getElementById('stop-btn'),
+            clearBtn: document.getElementById('clear-btn'),
+            connectionDot: document.getElementById('connection-dot'),
+            connectionStatus: document.getElementById('connection-status'),
+            recordingDot: document.getElementById('recording-dot'),
+            recordingStatus: document.getElementById('recording-status'),
+            providerDisplay: document.getElementById('provider-display'),
+            errorDisplay: document.getElementById('error-display'),
+            interimTranscript: document.getElementById('interim-transcript'),
+            finalTranscripts: document.getElementById('final-transcripts'),
+            totalCount: document.getElementById('total-count'),
+            correctionCount: document.getElementById('correction-count'),
+            wordCount: document.getElementById('word-count')
+        };
+
+        // Update UI state
+        function updateUI(state) {
+            if (state.connected !== undefined) {
+                elements.connectionDot.className = `status-dot ${state.connected ? 'connected' : 'disconnected'}`;
+                elements.connectionStatus.textContent = state.connected ? 'Connected' : 'Disconnected';
+                elements.connectBtn.disabled = state.connected;
+                elements.disconnectBtn.disabled = !state.connected;
+                elements.startBtn.disabled = !state.connected || state.recording;
+            }
+
+            if (state.recording !== undefined) {
+                elements.recordingDot.className = `status-dot ${state.recording ? 'recording' : 'disconnected'}`;
+                elements.recordingStatus.textContent = state.recording ? 'Recording' : 'Not Recording';
+                elements.stopBtn.disabled = !state.recording;
+            }
+
+            if (state.provider) {
+                elements.providerDisplay.textContent = state.provider;
+            }
+        }
+
+        // Show error
+        function showError(message) {
+            elements.errorDisplay.textContent = `❌ ${message}`;
+            elements.errorDisplay.classList.add('show');
+            setTimeout(() => {
+                elements.errorDisplay.classList.remove('show');
+            }, 5000);
+        }
+
+        // Update stats
+        function updateStats() {
+            elements.totalCount.textContent = totalTranscripts;
+            elements.correctionCount.textContent = totalCorrections;
+            elements.wordCount.textContent = totalWords;
+        }
+
+        // Connect
+        elements.connectBtn.onclick = async () => {
+            try {
+                const provider = elements.providerSelect.value;
+
+                transcription = new LiveTranscription({
+                    serverUrl: 'ws://localhost:5005',
+                    provider: provider,
+
+                    onTranscript: (transcript) => {
+                        if (transcript.isFinal) {
+                            // Final transcript
+                            const div = document.createElement('div');
+                            div.className = 'transcript-item';
+
+                            const time = document.createElement('div');
+                            time.className = 'transcript-time';
+                            time.textContent = transcript.timestamp.toLocaleTimeString();
+
+                            const text = document.createElement('div');
+                            text.className = 'transcript-text';
+                            text.textContent = transcript.text;
+
+                            // Add provider badge
+                            const providerBadge = document.createElement('span');
+                            providerBadge.className = 'transcript-provider';
+                            providerBadge.textContent = transcript.provider;
+                            text.appendChild(providerBadge);
+
+                            // Add correction if exists
+                            if (transcript.original) {
+                                const correction = document.createElement('span');
+                                correction.className = 'transcript-correction';
+                                correction.textContent = `corrected from: "${transcript.original}"`;
+                                text.appendChild(correction);
+                                totalCorrections++;
+                            }
+
+                            div.appendChild(time);
+                            div.appendChild(text);
+
+                            elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
+
+                            // Update stats
+                            totalTranscripts++;
+                            totalWords += transcript.text.split(' ').length;
+                            updateStats();
+
+                            // Clear interim
+                            elements.interimTranscript.textContent = '';
+                        } else {
+                            // Interim transcript
+                            elements.interimTranscript.textContent = transcript.text;
+                        }
+                    },
+
+                    onStatusChange: (status) => {
+                        updateUI(status);
+                    },
+
+                    onError: (error) => {
+                        showError(error);
+                    }
+                });
+
+                await transcription.connect();
+                updateUI({ provider: provider });
+
+            } catch (error) {
+                showError(`Connection failed: ${error.message}`);
+            }
+        };
+
+        // Disconnect
+        elements.disconnectBtn.onclick = () => {
+            if (transcription) {
+                transcription.disconnect();
+                transcription = null;
+            }
+        };
+
+        // Start recording
+        elements.startBtn.onclick = async () => {
+            try {
+                if (transcription) {
+                    await transcription.startRecording();
+                }
+            } catch (error) {
+                showError(`Failed to start recording: ${error.message}`);
+            }
+        };
+
+        // Stop recording
+        elements.stopBtn.onclick = () => {
+            if (transcription) {
+                transcription.stopRecording();
+            }
+        };
+
+        // Clear transcripts
+        elements.clearBtn.onclick = () => {
+            elements.finalTranscripts.innerHTML = '';
+            elements.interimTranscript.textContent = '';
+            totalTranscripts = 0;
+            totalCorrections = 0;
+            totalWords = 0;
+            updateStats();
+        };
+
+        // Change provider
+        elements.providerSelect.onchange = async (e) => {
+            if (transcription && transcription.isConnected) {
+                try {
+                    await transcription.changeProvider(e.target.value);
+                    updateUI({ provider: e.target.value });
+                } catch (error) {
+                    showError(`Failed to change provider: ${error.message}`);
+                }
+            }
+        };
+
+        // Initialize
+        updateStats();
+    </script>
+</body>
+</html>
