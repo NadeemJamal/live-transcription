@@ -68,13 +68,14 @@ except Exception as e:
 CUSTOM_KEYWORDS = []
 
 
-async def handle_deepgram(websocket: WebSocket):
+async def handle_deepgram(websocket: WebSocket, interim_results: bool = True, smart_format: bool = True, punctuate: bool = True):
     """Handle Deepgram transcription"""
     api_key = os.getenv('DEEPGRAM_API_KEY')
     if not api_key:
         raise Exception("DEEPGRAM_API_KEY not set")
 
     logger.info(f"🔑 Using Deepgram API key: {api_key[:20]}...")
+    logger.info(f"⚙️ Deepgram config - interim: {interim_results}, smart_format: {smart_format}, punctuate: {punctuate}")
 
     # Create Deepgram client
     config = DeepgramClientOptions(
@@ -124,9 +125,9 @@ async def handle_deepgram(websocket: WebSocket):
         encoding="linear16",
         sample_rate=16000,
         channels=1,
-        punctuate=True,
-        smart_format=True,
-        interim_results=True,
+        punctuate=punctuate,
+        smart_format=smart_format,
+        interim_results=interim_results,
         keywords=all_keywords,
     )
 
@@ -153,13 +154,14 @@ async def handle_deepgram(websocket: WebSocket):
         logger.info("✅ Deepgram connection closed")
 
 
-async def handle_speechmatics(websocket: WebSocket):
+async def handle_speechmatics(websocket: WebSocket, max_delay: float = 5.0, interim_results: bool = True):
     """Handle Speechmatics transcription"""
     api_key = os.getenv('SPEECHMATICS_API_KEY')
     if not api_key:
         raise Exception("SPEECHMATICS_API_KEY not set")
 
     logger.info(f"🔑 Using Speechmatics API key: {api_key[:20]}...")
+    logger.info(f"⚙️ Speechmatics config - max_delay: {max_delay}s, enable_partials: {interim_results}")
 
     # Speechmatics WebSocket URL
     sm_url = "wss://eu2.rt.speechmatics.com/v2/en"
@@ -187,8 +189,8 @@ async def handle_speechmatics(websocket: WebSocket):
             },
             "transcription_config": {
                 "language": "en",
-                "enable_partials": True,
-                "max_delay": 5.0,
+                "enable_partials": interim_results,
+                "max_delay": max_delay,
                 "additional_vocab": all_keywords,
                 "enable_entities": False
             }
@@ -318,11 +320,15 @@ async def delete_keyword(keyword: str):
 @app.websocket("/ws/transcribe")
 async def transcribe(
     websocket: WebSocket,
-    provider: str = Query(default="deepgram", description="STT provider: deepgram or speechmatics")
+    provider: str = Query(default="deepgram", description="STT provider: deepgram or speechmatics"),
+    max_delay: float = Query(default=5.0, description="Speechmatics: Max delay in seconds before finalizing (1.0-10.0)"),
+    interim_results: bool = Query(default=True, description="Enable interim (partial) results"),
+    smart_format: bool = Query(default=True, description="Deepgram: Enable smart formatting"),
+    punctuate: bool = Query(default=True, description="Enable automatic punctuation")
 ):
     """WebSocket endpoint for live transcription with multi-provider support"""
     await websocket.accept()
-    logger.info(f"🎙️ Client connected - Provider: {provider}")
+    logger.info(f"🎙️ Client connected - Provider: {provider}, max_delay: {max_delay}s, interim: {interim_results}")
 
     try:
         # Send ready signal
@@ -335,9 +341,9 @@ async def transcribe(
         # Route to appropriate provider
         # Handle provider variants (deepgram-nova2, deepgram-nova3, etc.)
         if provider.startswith("deepgram"):
-            await handle_deepgram(websocket)
+            await handle_deepgram(websocket, interim_results, smart_format, punctuate)
         elif provider == "speechmatics":
-            await handle_speechmatics(websocket)
+            await handle_speechmatics(websocket, max_delay, interim_results)
         else:
             raise Exception(f"Unknown provider: {provider}")
 

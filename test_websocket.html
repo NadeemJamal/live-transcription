@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test - Live Transcription</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        #transcripts {
+            border: 1px solid #ddd;
+            padding: 15px;
+            min-height: 200px;
+            margin: 20px 0;
+            background: #f8f9fa;
+        }
+        .transcript {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .final {
+            font-weight: bold;
+            color: #28a745;
+        }
+        .interim {
+            color: #6c757d;
+            font-style: italic;
+        }
+        .corrected {
+            background: #fff3cd;
+            padding: 3px 5px;
+            border-radius: 3px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        select {
+            padding: 8px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ Live Transcription WebSocket Test</h1>
+
+    <div>
+        <label>Provider:
+            <select id="provider">
+                <option value="deepgram-nova2">Deepgram Nova-2</option>
+                <option value="deepgram-nova3">Deepgram Nova-3</option>
+                <option value="speechmatics">Speechmatics</option>
+            </select>
+        </label>
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <button id="startMicBtn" onclick="startMicrophone()" disabled>Start Microphone</button>
+        <button id="stopMicBtn" onclick="stopMicrophone()" disabled>Stop Microphone</button>
+    </div>
+
+    <div id="status" class="status info">Not connected</div>
+
+    <h2>Transcripts</h2>
+    <div id="transcripts"></div>
+
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let mediaStream = null;
+        let processor = null;
+
+        function log(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            console.log(message);
+        }
+
+        function addTranscript(text, isFinal, provider, original = null) {
+            const div = document.createElement('div');
+            div.className = `transcript ${isFinal ? 'final' : 'interim'}`;
+
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = isFinal ? '✅ [FINAL]' : '⏳ [interim]';
+
+            let content = `${timestamp} ${prefix} ${text}`;
+            if (original) {
+                content += ` <span class="corrected">(corrected from: "${original}")</span>`;
+            }
+
+            div.innerHTML = content;
+
+            const transcripts = document.getElementById('transcripts');
+            transcripts.appendChild(div);
+            transcripts.scrollTop = transcripts.scrollHeight;
+        }
+
+        function connect() {
+            const provider = document.getElementById('provider').value;
+            const url = `ws://localhost:5001/ws/transcribe?provider=${provider}`;
+
+            log(`Connecting to ${url}...`, 'info');
+
+            ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                log(`✅ Connected to ${provider}`, 'connected');
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('startMicBtn').disabled = false;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'connected') {
+                    log(`✅ ${data.provider} ready to transcribe`, 'connected');
+                } else if (data.type === 'transcript') {
+                    addTranscript(data.text, data.is_final, data.provider, data.original);
+                } else if (data.type === 'error') {
+                    log(`❌ Error: ${data.message}`, 'error');
+                }
+            };
+
+            ws.onerror = (error) => {
+                log('❌ WebSocket error - check console', 'error');
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                log('🔌 Disconnected', 'info');
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('startMicBtn').disabled = true;
+                stopMicrophone();
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            stopMicrophone();
+        }
+
+        async function startMicrophone() {
+            try {
+                log('🎙️ Requesting microphone access...', 'info');
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+                    const audioData = e.inputBuffer.getChannelData(0);
+
+                    // Convert Float32 to PCM Int16
+                    const pcm = new Int16Array(audioData.length);
+                    for (let i = 0; i < audioData.length; i++) {
+                        const s = Math.max(-1, Math.min(1, audioData[i]));
+                        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+
+                    // Send to WebSocket
+                    ws.send(pcm.buffer);
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                log('🎙️ Microphone active - speak now!', 'connected');
+                document.getElementById('startMicBtn').disabled = true;
+                document.getElementById('stopMicBtn').disabled = false;
+
+            } catch (err) {
+                log(`❌ Microphone error: ${err.message}`, 'error');
+                console.error('Microphone error:', err);
+            }
+        }
+
+        function stopMicrophone() {
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            document.getElementById('startMicBtn').disabled = false;
+            document.getElementById('stopMicBtn').disabled = true;
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('🎙️ Microphone stopped', 'info');
+            }
+        }
+    </script>
+</body>
+</html>

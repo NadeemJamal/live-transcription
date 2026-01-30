@@ -12,6 +12,13 @@ class LiveTranscription {
         this.onError = options.onError || ((error) => console.error(error));
         this.onStatusChange = options.onStatusChange || ((status) => console.log(status));
 
+        // Configurable timing parameters
+        this.maxDelay = options.maxDelay || 5.0;  // Speechmatics: seconds before finalizing
+        this.interimResults = options.interimResults !== undefined ? options.interimResults : true;
+        this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
+        this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
+        this.bufferFlushDelay = options.bufferFlushDelay || 1500;  // Client-side: ms to wait before flushing Speechmatics buffer
+
         this.ws = null;
         this.audioContext = null;
         this.processor = null;
@@ -25,7 +32,15 @@ class LiveTranscription {
      */
     async connect() {
         return new Promise((resolve, reject) => {
-            const url = `${this.serverUrl}/ws/transcribe?provider=${this.provider}`;
+            // Build URL with all configuration parameters
+            const params = new URLSearchParams({
+                provider: this.provider,
+                max_delay: this.maxDelay,
+                interim_results: this.interimResults,
+                smart_format: this.smartFormat,
+                punctuate: this.punctuate
+            });
+            const url = `${this.serverUrl}/ws/transcribe?${params.toString()}`;
             console.log(`🔗 Connecting to ${url}...`);
 
             this.ws = new WebSocket(url);

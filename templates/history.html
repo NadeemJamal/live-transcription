@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test History - Voice Bot Testing Framework</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/" class="btn-secondary">← Back to Upload</a>
+            <h1>📁 Test History</h1>
+            <p>View all previously processed test files</p>
+        </header>
+
+        <div class="history-section">
+            {% if history %}
+                <div class="history-grid">
+                    {% for item in history %}
+                    <div class="history-card" data-id="{{ item.id }}">
+                        <div onclick="loadHistoricalResult('{{ item.id }}')">
+                            <div class="card-header">
+                                <span class="file-icon">🎙️</span>
+                                <h3>{{ item.name }}</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="history-date">{{ item.timestamp }}</div>
+                                <div class="history-stats-grid">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Errors:</span>
+                                        <span class="stat-value {% if item.total_errors == 0 %}success{% else %}error{% endif %}">
+                                            {{ item.total_errors }}
+                                        </span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Order:</span>
+                                        <span class="stat-value {% if item.order_status == 'PASSED' %}success{% else %}error{% endif %}">
+                                            {{ item.order_status }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <span>Click to view results →</span>
+                            </div>
+                        </div>
+                        <button class="btn-reanalyze" onclick="event.stopPropagation(); reanalyzeResult('{{ item.id }}')">
+                            🔄 Re-analyze
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <p>No test results found. Upload a WAV file to get started!</p>
+                    <a href="/" class="btn-primary">Upload a File</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        async function loadHistoricalResult(resultId) {
+            try {
+                const response = await fetch(`/api/result/${resultId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    sessionStorage.setItem('testReport', JSON.stringify(data.report));
+                    window.location.href = `/results/${data.report.conversation_name}`;
+                } else {
+                    alert('Error loading result: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error loading result: ' + error.message);
+            }
+        }
+
+        async function reanalyzeResult(resultId) {
+            const card = document.querySelector(`[data-id="${resultId}"]`);
+            const btn = card.querySelector('.btn-reanalyze');
+            const originalText = btn.innerHTML;
+
+            try {
+                btn.innerHTML = '⏳ Analyzing...';
+                btn.disabled = true;
+
+                const response = await fetch(`/api/reanalyze/${resultId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    btn.innerHTML = '✅ Done!';
+                    setTimeout(() => {
+                        // Reload the page to show updated stats
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Re-analysis failed');
+                }
+            } catch (error) {
+                btn.innerHTML = '❌ Error';
+                alert('Error re-analyzing: ' + error.message);
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>

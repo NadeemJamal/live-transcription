@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Results - {{ filename }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; gap: 10px;">
+                <a href="/" class="btn-secondary">← Upload Another</a>
+                <a href="/history" class="btn-secondary">📁 View History</a>
+                <button id="reanalyzeBtn" class="btn-secondary" onclick="reanalyzeCurrent()">🔄 Re-analyze</button>
+            </div>
+            <h1>📊 Test Results: <span id="filename"></span></h1>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="card">
+                <h3>Total Utterances</h3>
+                <p class="stat" id="totalUtterances">-</p>
+            </div>
+            <div class="card error-card">
+                <h3>Total Errors</h3>
+                <p class="stat" id="totalErrors">-</p>
+            </div>
+            <div class="card">
+                <h3>Test Duration</h3>
+                <p class="stat" id="duration">-</p>
+            </div>
+            <div class="card" id="orderCard">
+                <h3>Order Status</h3>
+                <p class="stat" id="orderStatus">-</p>
+            </div>
+        </div>
+
+        <!-- STT Keywords Debug Info -->
+        <div class="section" id="keywordsDebugSection" style="display: none;">
+            <h2>🔍 STT Keywords Debug Info</h2>
+            <div id="keywordsDebug" style="background: #f5f5f5; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 14px;"></div>
+        </div>
+
+        <!-- Error Breakdown Chart -->
+        <div class="section" id="errorChartSection" style="display: none;">
+            <h2>Error Breakdown</h2>
+            <canvas id="errorChart" width="400" height="200"></canvas>
+        </div>
+
+        <!-- Audio Player -->
+        <div class="section" id="audioPlayerSection" style="display: none;">
+            <h2>🎧 Audio Playback</h2>
+            <div style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+                <audio id="audioPlayer" controls style="width: 100%; max-width: 800px;">
+                    <source id="audioSource" src="" type="audio/wav">
+                    Your browser does not support the audio element.
+                </audio>
+                <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                    💡 <strong>Tip:</strong> Click any timestamp in the timeline below to jump to that moment in the audio.
+                </p>
+            </div>
+        </div>
+
+        <!-- Conversation Timeline -->
+        <div class="section">
+            <h2>Conversation Timeline</h2>
+
+            <!-- Engine comparison tabs -->
+            <div id="engineTabs" class="engine-tabs" style="display: none;"></div>
+
+            <div id="timeline" class="timeline"></div>
+        </div>
+
+        <!-- Error Details (Collapsible) -->
+        <div class="section" id="errorDetailsSection" style="display: none;">
+            <h2 class="collapsible">Error Details <span class="toggle">▼</span></h2>
+            <div class="collapsible-content">
+                <div id="errorDetails"></div>
+            </div>
+        </div>
+
+        <!-- Order Analysis (Collapsible) -->
+        <div class="section" id="orderAnalysisSection" style="display: none;">
+            <h2 class="collapsible">Order Analysis <span class="toggle">▼</span></h2>
+            <div class="collapsible-content">
+                <div id="orderAnalysis"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <script>
+        let currentResultId = null;
+
+        // Load report from sessionStorage
+        const report = JSON.parse(sessionStorage.getItem('testReport'));
+        if (report) {
+            renderDashboard(report);
+
+            // Try to extract result ID from timestamp if available
+            if (report.conversation_name && report.timestamp) {
+                const timestamp = report.timestamp.replace(/[-:T.]/g, '').substring(0, 15);
+                currentResultId = `${report.conversation_name}_${timestamp.substring(0, 8)}_${timestamp.substring(9, 15)}.json`;
+            }
+        } else {
+            alert('No test report found. Please upload a WAV file.');
+            window.location.href = '/';
+        }
+
+        async function reanalyzeCurrent() {
+            if (!currentResultId) {
+                alert('Cannot re-analyze: Result ID not found. This might be a newly uploaded file.');
+                return;
+            }
+
+            const btn = document.getElementById('reanalyzeBtn');
+            const originalText = btn.innerHTML;
+
+            try {
+                btn.innerHTML = '⏳ Analyzing...';
+                btn.disabled = true;
+
+                const response = await fetch(`/api/reanalyze/${currentResultId}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    btn.innerHTML = '✅ Done!';
+
+                    // Update the display with new data
+                    sessionStorage.setItem('testReport', JSON.stringify(data.report));
+
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Re-analysis failed');
+                }
+            } catch (error) {
+                btn.innerHTML = '❌ Error';
+                alert('Error re-analyzing: ' + error.message);
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>

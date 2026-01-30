@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Bot Testing Framework</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/history" class="btn-secondary">📁 View History</a>
+            <h1>🎙️ Saeed Balti Voice Bot Testing</h1>
+            <p>Upload a WAV recording to analyze bot performance</p>
+        </header>
+
+        <div class="upload-section">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="file-input-wrapper">
+                    <input type="file" id="wavFile" name="wav_file" accept=".wav" required>
+                    <label for="wavFile">Choose WAV File</label>
+                    <span id="fileName">No file chosen</span>
+                </div>
+
+                <!-- Engine selection -->
+                <div class="option-wrapper">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useNova3" name="use_nova3" checked>
+                        <span>Also run Deepgram Nova-3 (compare Nova-2 vs Nova-3 models)</span>
+                    </label>
+                    <p class="option-description">
+                        Both models use British English (en-GB). Comparing helps identify accuracy differences between Nova-2 and Nova-3.
+                    </p>
+                </div>
+
+                <div class="option-wrapper">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useWhisper" name="use_whisper">
+                        <span>Also run Whisper comparison (slower, but shows differences)</span>
+                    </label>
+                    <p class="option-description">
+                        Compare Deepgram vs Whisper transcripts side-by-side. Helps identify which engine is more accurate for your audio.
+                    </p>
+                </div>
+
+                <div class="option-wrapper">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useSpeechmatics" name="use_speechmatics" checked>
+                        <span>Also run Speechmatics (uses custom dictionary with sounds_like)</span>
+                    </label>
+                    <p class="option-description">
+                        Speechmatics with custom dictionary feature - explicitly maps pronunciation variants like "gel crazy" → "Jalfrezi". Best for Indian food terms.
+                    </p>
+                </div>
+
+                <button type="submit" id="uploadBtn">Analyze Recording</button>
+            </form>
+
+            <div id="loadingIndicator" style="display: none;">
+                <div class="spinner"></div>
+                <div class="progress-steps">
+                    <div class="step" id="step1">
+                        <span class="step-icon">📁</span>
+                        <span class="step-text">Uploading file...</span>
+                    </div>
+                    <div class="step" id="step2">
+                        <span class="step-icon">🎙️</span>
+                        <span class="step-text">Transcribing audio (this takes ~4 minutes)...</span>
+                    </div>
+                    <div class="step" id="step3">
+                        <span class="step-icon">🔍</span>
+                        <span class="step-text">Detecting errors...</span>
+                    </div>
+                    <div class="step" id="step4">
+                        <span class="step-icon">📊</span>
+                        <span class="step-text">Generating report...</span>
+                    </div>
+                </div>
+                <p id="progressMessage">Starting analysis...</p>
+            </div>
+
+            <div id="errorMessage" class="error" style="display: none;"></div>
+        </div>
+
+        <!-- Test History -->
+        {% if history %}
+        <div class="section history-section">
+            <h2>Recent Test Results</h2>
+            <div class="history-list">
+                {% for item in history %}
+                <div class="history-item" onclick="loadHistoricalResult('{{ item.id }}')">
+                    <div class="history-header">
+                        <strong>{{ item.name }}</strong>
+                        <span class="history-date">{{ item.timestamp }}</span>
+                    </div>
+                    <div class="history-stats">
+                        <span class="stat-badge {% if item.total_errors == 0 %}success{% else %}error{% endif %}">
+                            {{ item.total_errors }} errors
+                        </span>
+                        <span class="stat-badge {% if item.order_status == 'PASSED' %}success{% else %}error{% endif %}">
+                            Order: {{ item.order_status }}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('wavFile');
+        const fileName = document.getElementById('fileName');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMessage = document.getElementById('errorMessage');
+        const uploadBtn = document.getElementById('uploadBtn');
+
+        fileInput.addEventListener('change', (e) => {
+            fileName.textContent = e.target.files[0]?.name || 'No file chosen';
+        });
+
+        // Progress step tracking
+        function updateProgressStep(stepNumber) {
+            // Remove active class from all steps
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById(`step${i}`);
+                step.classList.remove('active', 'completed');
+            }
+
+            // Mark previous steps as completed
+            for (let i = 1; i < stepNumber; i++) {
+                document.getElementById(`step${i}`).classList.add('completed');
+            }
+
+            // Mark current step as active
+            if (stepNumber <= 4) {
+                document.getElementById(`step${stepNumber}`).classList.add('active');
+            }
+
+            // Update progress message
+            const messages = {
+                1: 'Uploading file to server...',
+                2: 'Transcribing audio with Deepgram Flux STT... (this may take a few minutes)',
+                3: 'Analyzing conversation for errors...',
+                4: 'Generating interactive dashboard...'
+            };
+            document.getElementById('progressMessage').textContent = messages[stepNumber] || '';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData();
+            formData.append('wav_file', fileInput.files[0]);
+
+            // Build engine list
+            const engines = ['deepgram'];  // Keep 'deepgram' for backward compatibility (maps to nova-2)
+            if (document.getElementById('useNova3').checked) {
+                engines.push('deepgram-nova-3');
+            }
+            if (document.getElementById('useWhisper').checked) {
+                engines.push('whisper');
+            }
+            if (document.getElementById('useSpeechmatics').checked) {
+                engines.push('speechmatics');
+            }
+            formData.append('engines', engines.join(','));
+
+            // Show loading
+            loadingIndicator.style.display = 'block';
+            errorMessage.style.display = 'none';
+            uploadBtn.disabled = true;
+
+            // Step 1: Uploading
+            updateProgressStep(1);
+
+            try {
+                // Simulate upload progress
+                setTimeout(() => updateProgressStep(2), 500);
+
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Step 3: Processing started (transcription done)
+                updateProgressStep(3);
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Step 4: Generating report
+                    updateProgressStep(4);
+
+                    // Brief delay to show final step
+                    setTimeout(() => {
+                        // Store report in sessionStorage and redirect
+                        sessionStorage.setItem('testReport', JSON.stringify(data.report));
+                        window.location.href = `/results/${data.filename}`;
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            } catch (error) {
+                loadingIndicator.style.display = 'none';
+                uploadBtn.disabled = false;
+                errorMessage.textContent = `Error: ${error.message}`;
+                errorMessage.style.display = 'block';
+            }
+        });
+
+        // Load historical test result
+        async function loadHistoricalResult(resultId) {
+            try {
+                const response = await fetch(`/api/result/${resultId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store in sessionStorage and redirect
+                    sessionStorage.setItem('testReport', JSON.stringify(data.report));
+                    window.location.href = `/results/${data.report.conversation_name}`;
+                } else {
+                    alert('Error loading result: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error loading result: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
