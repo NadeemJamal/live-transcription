@@ -17,10 +17,13 @@ class LiveTranscription {
         this.interimResults = options.interimResults !== undefined ? options.interimResults : true;
         this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
         this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
+        this.keywords = options.keywords || 'all';  // 'all', 'top_20', 'top_50', 'none', or comma-separated list
+
+        // Speechmatics buffering control
+        this.enableBuffering = options.enableBuffering !== undefined ? options.enableBuffering : false;  // Default: OFF (no buffering)
         // Client-side buffer delay: wait this long after last word before flushing
         // Default: half of max_delay (in milliseconds) to allow for natural speech pauses
         this.bufferFlushDelay = options.bufferFlushDelay || (this.maxDelay * 1000 * 0.5);  // 50% of max_delay
-        this.keywords = options.keywords || 'all';  // 'all', 'top_20', 'top_50', 'none', or comma-separated list
 
         this.ws = null;
         this.audioContext = null;
@@ -88,8 +91,8 @@ class LiveTranscription {
                 }
 
                 if (data.type === 'transcript') {
-                    // Check if this is Speechmatics final (which sends word-by-word)
-                    if (data.is_final && data.provider === 'speechmatics') {
+                    // Check if buffering is enabled AND this is Speechmatics final
+                    if (this.enableBuffering && data.is_final && data.provider === 'speechmatics') {
                         console.log(`[SM Buffer] Received word: "${data.text}"`);
 
                         // Buffer Speechmatics finals and flush after pause
@@ -112,7 +115,10 @@ class LiveTranscription {
                         }, this.bufferFlushDelay);
 
                     } else {
-                        // Deepgram finals or any interim results - pass through immediately
+                        // Pass through immediately (default behavior)
+                        // - All Deepgram transcripts
+                        // - All interim results
+                        // - Speechmatics finals when buffering is disabled
                         console.log(`[Pass Through] ${data.is_final ? 'FINAL' : 'INTERIM'} from ${data.provider}: "${data.text}"`);
                         this.onTranscript({
                             text: data.text,

@@ -16,7 +16,8 @@ Your frontend can **fully control transcription timing and behavior** by passing
 | Parameter | Type | Default | Description | Applies To |
 |-----------|------|---------|-------------|------------|
 | `maxDelay` | float | 5.0 | Seconds before finalizing transcript | Speechmatics |
-| `bufferFlushDelay` | int | 1500 | Milliseconds before flushing display buffer | Client-side (Speechmatics display) |
+| `enableBuffering` | bool | false | Enable client-side buffering for Speechmatics word-by-word finals | Client-side (Speechmatics only) |
+| `bufferFlushDelay` | int | 2500 | Milliseconds before flushing display buffer (only if enableBuffering=true) | Client-side (Speechmatics display) |
 
 ### Feature Control
 
@@ -200,9 +201,34 @@ maxDelay: 8.0  // "I would like chicken tikka masala with extra spice and no oni
 
 ---
 
+### `enableBuffering` (Client-side, Speechmatics only)
+
+**What it does:** Controls whether Speechmatics word-by-word finals are buffered and combined into phrases
+
+| Value | Behavior | Best For |
+|-------|----------|----------|
+| `false` (default) | Pass through every word immediately | Real-time display, word-by-word processing |
+| `true` | Buffer words and combine into phrases | Cleaner UI, phrase-level processing |
+
+**Default:** `false` (no buffering, pass through immediately)
+
+**When to enable buffering:**
+- ✅ You want to show complete phrases instead of individual words
+- ✅ Your UI processes transcripts at phrase level
+- ✅ You're okay with a short delay before displaying (bufferFlushDelay)
+
+**When to disable buffering (default):**
+- ✅ You want real-time word-by-word display
+- ✅ You want to process each word immediately
+- ✅ You want the fastest possible response
+
+---
+
 ### `bufferFlushDelay` (Client-side, Speechmatics display)
 
 **What it does:** How long to wait before displaying accumulated words in UI
+
+**Only applies when `enableBuffering: true`**
 
 | Value | Behavior | Best For |
 |-------|----------|----------|
@@ -214,8 +240,6 @@ maxDelay: 8.0  // "I would like chicken tikka masala with extra spice and no oni
 **Default:** Automatically set to 50% of `maxDelay` (e.g., maxDelay=5.0s → bufferFlushDelay=2500ms)
 
 **Note:** This is **display-only**, doesn't affect when transcripts finalize
-
-**Important:** If you're seeing phrases split into separate words (e.g., "Alu" then "Gobi" instead of "Alu Gobi"), increase this value to allow for natural pauses between words.
 
 ---
 
