@@ -520,6 +520,11 @@
         let totalCorrections = 0;
         let totalWords = 0;
 
+        // Speechmatics buffering (accumulate word-by-word finals into phrases)
+        let speechmaticsBuffer = '';
+        let speechmaticsTimeout = null;
+        let speechmaticsTimestamp = null;
+
         // Elements
         const elements = {
             providerSelect: document.getElementById('provider-select'),
@@ -571,6 +576,42 @@
             }, 5000);
         }
 
+        // Flush Speechmatics buffer to display
+        function flushSpeechmaticsBuffer() {
+            if (speechmaticsBuffer.trim().length === 0) return;
+
+            const div = document.createElement('div');
+            div.className = 'transcript-item';
+
+            const time = document.createElement('div');
+            time.className = 'transcript-time';
+            time.textContent = (speechmaticsTimestamp || new Date()).toLocaleTimeString();
+
+            const text = document.createElement('div');
+            text.className = 'transcript-text';
+            text.textContent = speechmaticsBuffer.trim();
+
+            // Add provider badge
+            const providerBadge = document.createElement('span');
+            providerBadge.className = 'transcript-provider';
+            providerBadge.textContent = 'speechmatics';
+            text.appendChild(providerBadge);
+
+            div.appendChild(time);
+            div.appendChild(text);
+
+            elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
+
+            // Update stats
+            totalTranscripts++;
+            totalWords += speechmaticsBuffer.trim().split(' ').length;
+            updateStats();
+
+            // Clear buffer
+            speechmaticsBuffer = '';
+            speechmaticsTimestamp = null;
+        }
+
         // Update stats
         function updateStats() {
             elements.totalCount.textContent = totalTranscripts;
@@ -589,45 +630,69 @@
 
                     onTranscript: (transcript) => {
                         if (transcript.isFinal) {
-                            // Final transcript
-                            const div = document.createElement('div');
-                            div.className = 'transcript-item';
+                            // Check if this is Speechmatics (which sends word-by-word finals)
+                            if (transcript.provider === 'speechmatics') {
+                                // Buffer Speechmatics finals and flush after pause
+                                if (speechmaticsBuffer.length === 0) {
+                                    speechmaticsTimestamp = transcript.timestamp;
+                                }
 
-                            const time = document.createElement('div');
-                            time.className = 'transcript-time';
-                            time.textContent = transcript.timestamp.toLocaleTimeString();
+                                speechmaticsBuffer += (speechmaticsBuffer ? ' ' : '') + transcript.text;
 
-                            const text = document.createElement('div');
-                            text.className = 'transcript-text';
-                            text.textContent = transcript.text;
+                                // Clear existing timeout and set new one
+                                if (speechmaticsTimeout) {
+                                    clearTimeout(speechmaticsTimeout);
+                                }
 
-                            // Add provider badge
-                            const providerBadge = document.createElement('span');
-                            providerBadge.className = 'transcript-provider';
-                            providerBadge.textContent = transcript.provider;
-                            text.appendChild(providerBadge);
+                                // Flush after 1.5 seconds of no new words
+                                speechmaticsTimeout = setTimeout(() => {
+                                    flushSpeechmaticsBuffer();
+                                }, 1500);
 
-                            // Add correction if exists
-                            if (transcript.original) {
-                                const correction = document.createElement('span');
-                                correction.className = 'transcript-correction';
-                                correction.textContent = `corrected from: "${transcript.original}"`;
-                                text.appendChild(correction);
-                                totalCorrections++;
+                                // Clear interim
+                                elements.interimTranscript.textContent = '';
+
+                            } else {
+                                // Deepgram - display immediately (already sends complete phrases)
+                                const div = document.createElement('div');
+                                div.className = 'transcript-item';
+
+                                const time = document.createElement('div');
+                                time.className = 'transcript-time';
+                                time.textContent = transcript.timestamp.toLocaleTimeString();
+
+                                const text = document.createElement('div');
+                                text.className = 'transcript-text';
+                                text.textContent = transcript.text;
+
+                                // Add provider badge
+                                const providerBadge = document.createElement('span');
+                                providerBadge.className = 'transcript-provider';
+                                providerBadge.textContent = transcript.provider;
+                                text.appendChild(providerBadge);
+
+                                // Add correction if exists
+                                if (transcript.original) {
+                                    const correction = document.createElement('span');
+                                    correction.className = 'transcript-correction';
+                                    correction.textContent = `corrected from: "${transcript.original}"`;
+                                    text.appendChild(correction);
+                                    totalCorrections++;
+                                }
+
+                                div.appendChild(time);
+                                div.appendChild(text);
+
+                                elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
+
+                                // Update stats
+                                totalTranscripts++;
+                                totalWords += transcript.text.split(' ').length;
+                                updateStats();
+
+                                // Clear interim
+                                elements.interimTranscript.textContent = '';
                             }
-
-                            div.appendChild(time);
-                            div.appendChild(text);
-
-                            elements.finalTranscripts.insertBefore(div, elements.finalTranscripts.firstChild);
-
-                            // Update stats
-                            totalTranscripts++;
-                            totalWords += transcript.text.split(' ').length;
-                            updateStats();
-
-                            // Clear interim
-                            elements.interimTranscript.textContent = '';
                         } else {
                             // Interim transcript
                             elements.interimTranscript.textContent = transcript.text;
@@ -653,6 +718,12 @@
 
         // Disconnect
         elements.disconnectBtn.onclick = () => {
+            // Flush any buffered Speechmatics transcripts
+            if (speechmaticsTimeout) {
+                clearTimeout(speechmaticsTimeout);
+            }
+            flushSpeechmaticsBuffer();
+
             if (transcription) {
                 transcription.disconnect();
                 transcription = null;
@@ -672,6 +743,12 @@
 
         // Stop recording
         elements.stopBtn.onclick = () => {
+            // Flush any buffered Speechmatics transcripts
+            if (speechmaticsTimeout) {
+                clearTimeout(speechmaticsTimeout);
+            }
+            flushSpeechmaticsBuffer();
+
             if (transcription) {
                 transcription.stopRecording();
             }
@@ -679,6 +756,13 @@
 
         // Clear transcripts
         elements.clearBtn.onclick = () => {
+            // Clear Speechmatics buffer
+            if (speechmaticsTimeout) {
+                clearTimeout(speechmaticsTimeout);
+            }
+            speechmaticsBuffer = '';
+            speechmaticsTimestamp = null;
+
             elements.finalTranscripts.innerHTML = '';
             elements.interimTranscript.textContent = '';
             totalTranscripts = 0;
