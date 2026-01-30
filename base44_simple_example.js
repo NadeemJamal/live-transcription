@@ -25,6 +25,30 @@ class LiveTranscription {
         this.mediaStream = null;
         this.isConnected = false;
         this.isRecording = false;
+
+        // Speechmatics buffering (accumulate word-by-word finals into phrases)
+        this.speechmaticsBuffer = '';
+        this.speechmaticsTimeout = null;
+        this.speechmaticsTimestamp = null;
+    }
+
+    /**
+     * Flush Speechmatics buffer - emit accumulated words as a single transcript
+     */
+    flushSpeechmaticsBuffer() {
+        if (this.speechmaticsBuffer.trim().length === 0) return;
+
+        // Emit the buffered transcript as a single final transcript
+        this.onTranscript({
+            text: this.speechmaticsBuffer.trim(),
+            isFinal: true,
+            provider: 'speechmatics',
+            timestamp: this.speechmaticsTimestamp || new Date()
+        });
+
+        // Clear buffer
+        this.speechmaticsBuffer = '';
+        this.speechmaticsTimestamp = null;
     }
 
     /**
@@ -60,13 +84,35 @@ class LiveTranscription {
                 }
 
                 if (data.type === 'transcript') {
-                    this.onTranscript({
-                        text: data.text,
-                        isFinal: data.is_final,
-                        provider: data.provider,
-                        original: data.original,
-                        timestamp: new Date()
-                    });
+                    // Check if this is Speechmatics final (which sends word-by-word)
+                    if (data.is_final && data.provider === 'speechmatics') {
+                        // Buffer Speechmatics finals and flush after pause
+                        if (this.speechmaticsBuffer.length === 0) {
+                            this.speechmaticsTimestamp = new Date();
+                        }
+
+                        this.speechmaticsBuffer += (this.speechmaticsBuffer ? ' ' : '') + data.text;
+
+                        // Clear existing timeout and set new one
+                        if (this.speechmaticsTimeout) {
+                            clearTimeout(this.speechmaticsTimeout);
+                        }
+
+                        // Flush after configured delay with no new words
+                        this.speechmaticsTimeout = setTimeout(() => {
+                            this.flushSpeechmaticsBuffer();
+                        }, this.bufferFlushDelay);
+
+                    } else {
+                        // Deepgram finals or any interim results - pass through immediately
+                        this.onTranscript({
+                            text: data.text,
+                            isFinal: data.is_final,
+                            provider: data.provider,
+                            original: data.original,
+                            timestamp: new Date()
+                        });
+                    }
                 }
 
                 if (data.type === 'error') {
@@ -155,6 +201,12 @@ class LiveTranscription {
      * Stop recording
      */
     stopRecording() {
+        // Flush any buffered Speechmatics transcripts
+        if (this.speechmaticsTimeout) {
+            clearTimeout(this.speechmaticsTimeout);
+        }
+        this.flushSpeechmaticsBuffer();
+
         if (this.processor) {
             this.processor.disconnect();
             this.processor = null;
