@@ -34,11 +34,9 @@ app.add_middleware(
 )
 
 
-# Try to load menu keywords from Saeed Balti menu, fallback to default list
+# Load menu keywords from Saeed Balti menu
 try:
-    import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    from saeed_balti.bot.saeed_balti_menu import get_top_priority_keyterms
+    from saeed_balti_menu import get_top_priority_keyterms
     MENU_KEYWORDS = [kw.lower() for kw in get_top_priority_keyterms(limit=100)]
     logger.info(f"✅ Loaded {len(MENU_KEYWORDS)} keywords from Saeed Balti menu")
 except Exception as e:
