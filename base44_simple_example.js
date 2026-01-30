@@ -13,7 +13,7 @@ class LiveTranscription {
         this.onStatusChange = options.onStatusChange || ((status) => console.log(status));
 
         // Configurable timing parameters
-        this.maxDelay = options.maxDelay || 8.0;  // Speechmatics: seconds before finalizing (default 8s for complete sentences)
+        this.maxDelay = options.maxDelay || 10.0;  // Speechmatics: seconds before finalizing (default 10s for complete sentences)
         this.interimResults = options.interimResults !== undefined ? options.interimResults : true;
         this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
         this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
@@ -22,8 +22,8 @@ class LiveTranscription {
         // Speechmatics buffering control - DEFAULT ON for sentence-level display
         this.enableBuffering = options.enableBuffering !== undefined ? options.enableBuffering : true;  // Default: ON (buffer into sentences)
         // Client-side buffer delay: wait this long after last word before flushing
-        // Default: 4 seconds to capture complete sentences
-        this.bufferFlushDelay = options.bufferFlushDelay || 4000;  // 4 seconds
+        // Default: 6 seconds to capture complete sentences (allows for natural pauses)
+        this.bufferFlushDelay = options.bufferFlushDelay || 6000;  // 6 seconds
 
         this.ws = null;
         this.audioContext = null;
