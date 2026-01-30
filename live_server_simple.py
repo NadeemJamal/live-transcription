@@ -174,12 +174,8 @@ async def handle_speechmatics(websocket: WebSocket):
                 while True:
                     audio_data = await websocket.receive_bytes()
                     if audio_data and len(audio_data) > 0:
-                        # Speechmatics expects base64 encoded audio in JSON message
-                        audio_message = {
-                            "message": "AddAudio",
-                            "audio": base64.b64encode(audio_data).decode('utf-8')
-                        }
-                        await sm_ws.send(json.dumps(audio_message))
+                        # Speechmatics expects raw binary audio frames (not JSON)
+                        await sm_ws.send(audio_data)
             except WebSocketDisconnect:
                 logger.info("🔌 Client disconnected")
                 # Send EndOfStream
