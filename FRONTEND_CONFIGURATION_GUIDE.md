@@ -206,11 +206,16 @@ maxDelay: 8.0  // "I would like chicken tikka masala with extra spice and no oni
 
 | Value | Behavior | Best For |
 |-------|----------|----------|
-| 500-800ms | Shows very quickly | Fast-paced environments |
-| 1000-1500ms | Balanced (default) | Normal use |
-| 2000-3000ms | Waits for more words | Longer phrases |
+| 500-800ms | Shows very quickly | Fast-paced, short commands |
+| 1000-1500ms | Balanced | Normal continuous speech |
+| 2000-3000ms | Patient (default) | Natural pauses between words |
+| 3000-4000ms | Very patient | Slow/deliberate speech |
+
+**Default:** Automatically set to 50% of `maxDelay` (e.g., maxDelay=5.0s → bufferFlushDelay=2500ms)
 
 **Note:** This is **display-only**, doesn't affect when transcripts finalize
+
+**Important:** If you're seeing phrases split into separate words (e.g., "Alu" then "Gobi" instead of "Alu Gobi"), increase this value to allow for natural pauses between words.
 
 ---
 

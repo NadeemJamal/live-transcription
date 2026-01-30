@@ -17,7 +17,9 @@ class LiveTranscription {
         this.interimResults = options.interimResults !== undefined ? options.interimResults : true;
         this.smartFormat = options.smartFormat !== undefined ? options.smartFormat : true;  // Deepgram only
         this.punctuate = options.punctuate !== undefined ? options.punctuate : true;
-        this.bufferFlushDelay = options.bufferFlushDelay || 1500;  // Client-side: ms to wait before flushing Speechmatics buffer
+        // Client-side buffer delay: wait this long after last word before flushing
+        // Default: half of max_delay (in milliseconds) to allow for natural speech pauses
+        this.bufferFlushDelay = options.bufferFlushDelay || (this.maxDelay * 1000 * 0.5);  // 50% of max_delay
         this.keywords = options.keywords || 'all';  // 'all', 'top_20', 'top_50', 'none', or comma-separated list
 
         this.ws = null;
