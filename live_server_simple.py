@@ -36,11 +36,22 @@ app.add_middleware(
 
 # Load menu keywords from Saeed Balti menu
 try:
-    from saeed_balti_menu import get_top_priority_keyterms
-    MENU_KEYWORDS = [kw.lower() for kw in get_top_priority_keyterms(limit=100)]
+    from saeed_balti_menu import MENU
+
+    # Extract all menu item names from all categories
+    menu_keywords = []
+    for category, items in MENU.items():
+        if isinstance(items, dict):
+            menu_keywords.extend(items.keys())
+
+    # Convert to lowercase and remove duplicates
+    MENU_KEYWORDS = sorted(list(set([kw.lower() for kw in menu_keywords])))
     logger.info(f"✅ Loaded {len(MENU_KEYWORDS)} keywords from Saeed Balti menu")
+    logger.info(f"📋 Sample keywords: {MENU_KEYWORDS[:5]}")
 except Exception as e:
-    logger.warning(f"⚠️ Could not load Saeed Balti menu, using default keywords: {e}")
+    logger.error(f"⚠️ Could not load Saeed Balti menu: {e}")
+    import traceback
+    traceback.print_exc()
     MENU_KEYWORDS = [
         "chicken tikka", "chicken tikka masala", "tikka masala", "jalfrezi",
         "korma", "rogan josh", "vindaloo", "madras", "biryani", "tandoori",
@@ -51,6 +62,7 @@ except Exception as e:
         "lamb vindaloo", "chicken jalfrezi", "lamb bhuna", "prawn",
         "king prawn", "garlic naan", "peshwari naan", "pilau rice"
     ]
+    logger.warning(f"⚠️ Using {len(MENU_KEYWORDS)} default keywords")
 
 # Store custom keywords added by users
 CUSTOM_KEYWORDS = []
