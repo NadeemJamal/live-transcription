@@ -477,16 +477,133 @@ async def transcribe(
             pass
 
 
-@app.get("/test")
-async def test_page():
-    """Test page with no buffering"""
+@app.get("/demo")
+async def demo_page():
+    """Demo page with sentence-level buffering"""
     from fastapi.responses import HTMLResponse
 
     html_content = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Test - No Buffering</title>
+    <title>Demo - Sentence Level (With Buffering)</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        button { padding: 15px 30px; margin: 5px; font-size: 18px; cursor: pointer; }
+        #transcripts { margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; min-height: 200px; }
+        .transcript { margin: 10px 0; padding: 15px; background: white; border-left: 4px solid #28a745; border-radius: 4px; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .info { background: #d1ecf1; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🎤 Sentence-Level Transcription</h1>
+    <div class="info">
+        <strong>How it works:</strong> Words are buffered and combined into complete sentences.
+        Speak continuously, then wait 6 seconds of silence to see your sentence.
+    </div>
+    <p><strong>Try saying:</strong> "How are you doing today my name is Nadeem Jamal"</p>
+    <div>
+        <button id="start">Start (Speechmatics - Sentence Mode)</button>
+        <button id="stop">Stop</button>
+    </div>
+    <div id="transcripts"></div>
+    <script>
+        let ws = null, audioContext = null, processor = null, stream = null;
+        let buffer = '', bufferTimeout = null;
+        const FLUSH_DELAY = 6000; // 6 seconds
+
+        document.getElementById('start').onclick = async () => {
+            const url = 'wss://live-transcription-production.up.railway.app/ws/transcribe?provider=speechmatics&keywords=top_20&max_delay=10.0';
+            console.log('Connecting:', url);
+            ws = new WebSocket(url);
+
+            ws.onopen = () => console.log('✅ Connected');
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'connected') startAudio();
+                if (data.type === 'transcript' && data.is_final) {
+                    // Buffer words
+                    buffer += (buffer ? ' ' : '') + data.text;
+                    console.log('Buffering:', buffer);
+
+                    // Reset timeout
+                    if (bufferTimeout) clearTimeout(bufferTimeout);
+                    bufferTimeout = setTimeout(() => {
+                        if (buffer.trim()) {
+                            console.log('═══ SENTENCE ═══');
+                            console.log(buffer.trim());
+                            console.log('═══════════════');
+
+                            const div = document.createElement('div');
+                            div.className = 'transcript';
+                            div.innerHTML = buffer.trim() + '<br><small>' + new Date().toLocaleTimeString() + '</small>';
+                            document.getElementById('transcripts').insertBefore(div, document.getElementById('transcripts').firstChild);
+                            buffer = '';
+                        }
+                    }, FLUSH_DELAY);
+                }
+            };
+            ws.onerror = (err) => console.error('❌ Error:', err);
+            ws.onclose = () => console.log('🔌 Disconnected');
+        };
+
+        async function startAudio() {
+            console.log('🎙️ Starting audio...');
+            stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }});
+            audioContext = new AudioContext({ sampleRate: 16000 });
+            const source = audioContext.createMediaStreamSource(stream);
+            processor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (e) => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                const audioData = e.inputBuffer.getChannelData(0);
+                const pcm = new Int16Array(audioData.length);
+                for (let i = 0; i < audioData.length; i++) {
+                    const s = Math.max(-1, Math.min(1, audioData[i]));
+                    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                ws.send(pcm.buffer);
+            };
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+            console.log('✅ Recording... Speak now!');
+        }
+
+        document.getElementById('stop').onclick = () => {
+            // Flush any remaining buffer
+            if (bufferTimeout) clearTimeout(bufferTimeout);
+            if (buffer.trim()) {
+                const div = document.createElement('div');
+                div.className = 'transcript';
+                div.innerHTML = buffer.trim() + '<br><small>' + new Date().toLocaleTimeString() + '</small>';
+                document.getElementById('transcripts').insertBefore(div, document.getElementById('transcripts').firstChild);
+                buffer = '';
+            }
+
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            if (ws) ws.close();
+            console.log('⏸️ Stopped');
+        };
+    </script>
+</body>
+</html>
+    """
+
+    return HTMLResponse(content=html_content)
+
+
+@app.get("/test")
+async def test_page():
+    """Test page with no buffering (word-by-word)"""
+    from fastapi.responses import HTMLResponse
+
+    html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test - Raw Word-by-Word (No Buffering)</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
         button { padding: 10px 20px; margin: 5px; font-size: 16px; }
@@ -514,9 +631,17 @@ async def test_page():
             ws.onopen = () => console.log('✅ Connected');
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('Received:', data);
-                if (data.type === 'connected') startAudio();
+
+                if (data.type === 'connected') {
+                    console.log('✅ Connected:', data);
+                    startAudio();
+                }
+
                 if (data.type === 'transcript') {
+                    // Log to console with actual text
+                    console.log(`${data.is_final ? '🟢 FINAL' : '🟡 INTERIM'}: "${data.text}"`);
+
+                    // Display on page
                     const div = document.createElement('div');
                     div.className = data.is_final ? 'transcript' : 'transcript interim';
                     div.innerHTML = `<strong>${data.is_final ? 'FINAL' : 'INTERIM'}</strong>: ${data.text}<br><small>${new Date().toLocaleTimeString()}</small>`;
