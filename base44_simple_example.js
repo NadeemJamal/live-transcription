@@ -22,8 +22,8 @@ class LiveTranscription {
         // Speechmatics buffering control - DEFAULT ON for sentence-level display
         this.enableBuffering = options.enableBuffering !== undefined ? options.enableBuffering : true;  // Default: ON (buffer into sentences)
         // Client-side buffer delay: wait this long after last word before flushing
-        // Default: 6 seconds to capture complete sentences (allows for natural pauses)
-        this.bufferFlushDelay = options.bufferFlushDelay || 6000;  // 6 seconds
+        // Default: 3 seconds to capture complete sentences (allows for natural pauses)
+        this.bufferFlushDelay = options.bufferFlushDelay || 3000;  // 3 seconds
 
         this.ws = null;
         this.audioContext = null;
